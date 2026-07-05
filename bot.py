@@ -152,7 +152,7 @@ async def webhook(request: Request):
     update_id = data.get("update_id")
 
     if update_id in processed_updates:
-        return []
+        return {}
     processed_updates.add(update_id)
     if len(processed_updates) > 1000:
         processed_updates.clear()
@@ -162,13 +162,13 @@ async def webhook(request: Request):
     user_id = msg.get("from", {}).get("id")
 
     if not chat_id or not user_id:
-        return []
+        return {}
 
     if user_id != settings.allowed_user_id:
-        return [tg_resp("sendMessage", chat_id, text="Доступ закрыт.")]
+        return tg_resp("sendMessage", chat_id, text="Доступ закрыт.")
 
     if is_rate_limited(user_id):
-        return [tg_resp("sendMessage", chat_id, text="Шнеку нужно передохнуть. Подожди немного.")]
+        return tg_resp("sendMessage", chat_id, text="Шнеку нужно передохнуть. Подожди немного.")
 
     text = msg.get("text", "")
     entities = msg.get("entities", [])
@@ -185,36 +185,36 @@ async def webhook(request: Request):
             return await handle_text(chat_id, user_id, text)
     except Exception as e:
         logger.error("Handler error: %s", e)
-        return [tg_resp("sendMessage", chat_id, text="Произошла ошибка. Попробуй позже.")]
+        return tg_resp("sendMessage", chat_id, text="Произошла ошибка. Попробуй позже.")
 
 
-async def handle_command(chat_id: int, user_id: int, text: str) -> list[dict]:
+async def handle_command(chat_id: int, user_id: int, text: str) -> dict:
     cmd = text.split()[0].lower()
 
     if cmd == "/start":
-        return [tg_resp("sendMessage", chat_id, text=(
+        return tg_resp("sendMessage", chat_id, text=(
             "🤖 Привет! Я AI-бот.\n\n"
             "• Отвечаю на вопросы\n"
             "• Понимаю картинки и голосовые\n"
             "• Ищу в интернете\n"
             "• Помню контекст\n\n"
             "Команды: /clear, /notes, /clearnotes, /costs, /briefing"
-        ))]
+        ))
 
     elif cmd == "/clear":
         await memory.clear_history(str(user_id))
-        return [tg_resp("sendMessage", chat_id, text="История диалога очищена.")]
+        return tg_resp("sendMessage", chat_id, text="История диалога очищена.")
 
     elif cmd == "/notes":
         notes = await memory.get_notes()
         if not notes:
-            return [tg_resp("sendMessage", chat_id, text="Заметок пока нет.")]
+            return tg_resp("sendMessage", chat_id, text="Заметок пока нет.")
         text = "📝 Последние заметки:\n\n" + "\n".join(f"• {n['text']}" for n in notes)
-        return [tg_resp("sendMessage", chat_id, text=text[:4000])]
+        return tg_resp("sendMessage", chat_id, text=text[:4000])
 
     elif cmd == "/clearnotes":
         await memory.clear_notes()
-        return [tg_resp("sendMessage", chat_id, text="Все заметки удалены.")]
+        return tg_resp("sendMessage", chat_id, text="Все заметки удалены.")
 
     elif cmd == "/costs":
         costs = await memory.get_costs()
@@ -227,15 +227,15 @@ async def handle_command(chat_id: int, user_id: int, text: str) -> list[dict]:
             f"Всего: {costs.get('total_input_tokens', 0)} in / {costs.get('total_output_tokens', 0)} out токенов\n"
             f"Примерная стоимость: ${total:.4f}"
         )
-        return [tg_resp("sendMessage", chat_id, text=text)]
+        return tg_resp("sendMessage", chat_id, text=text)
 
     elif cmd == "/briefing":
         return await generate_briefing(chat_id)
 
-    return [tg_resp("sendMessage", chat_id, text="Неизвестная команда.")]
+    return tg_resp("sendMessage", chat_id, text="Неизвестная команда.")
 
 
-async def handle_text(chat_id: int, user_id: int, text: str) -> list[dict]:
+async def handle_text(chat_id: int, user_id: int, text: str) -> dict:
     history = []
     user_facts = []
     search_results = []
@@ -266,13 +266,13 @@ async def handle_text(chat_id: int, user_id: int, text: str) -> list[dict]:
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
         asyncio.create_task(extract_and_save_facts(text, user_id))
-        return [tg_resp("sendMessage", chat_id, text=answer)]
+        return tg_resp("sendMessage", chat_id, text=answer)
     except Exception as e:
         logger.error("OpenRouter error: %s", e)
-        return [tg_resp("sendMessage", chat_id, text="Бот временно недоступен. Попробуй позже.")]
+        return tg_resp("sendMessage", chat_id, text="Бот временно недоступен. Попробуй позже.")
 
 
-async def handle_image(chat_id: int, user_id: int, photo: dict) -> list[dict]:
+async def handle_image(chat_id: int, user_id: int, photo: dict) -> dict:
     try:
         file_id = photo["file_id"]
         async with httpx.AsyncClient() as cl:
@@ -315,13 +315,13 @@ async def handle_image(chat_id: int, user_id: int, photo: dict) -> list[dict]:
         await memory.add_message(str(user_id), "assistant", answer)
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-        return [tg_resp("sendMessage", chat_id, text=answer)]
+        return tg_resp("sendMessage", chat_id, text=answer)
     except Exception as e:
         logger.error("Image error: %s", e)
-        return [tg_resp("sendMessage", chat_id, text="Не удалось обработать изображение.")]
+        return tg_resp("sendMessage", chat_id, text="Не удалось обработать изображение.")
 
 
-async def handle_voice(chat_id: int, user_id: int, file_id: str) -> list[dict]:
+async def handle_voice(chat_id: int, user_id: int, file_id: str) -> dict:
     try:
         async with httpx.AsyncClient() as cl:
             r = await cl.get(
@@ -338,16 +338,16 @@ async def handle_voice(chat_id: int, user_id: int, file_id: str) -> list[dict]:
 
         gemini_key = settings.google_genai_api_key.get_secret_value() if settings.google_genai_api_key else ""
         if not gemini_key:
-            return [tg_resp("sendMessage", chat_id, text="Голосовые сообщения не поддерживаются (не настроен Gemini).")]
+            return tg_resp("sendMessage", chat_id, text="Голосовые сообщения не поддерживаются (не настроен Gemini).")
 
         transcript = await transcribe_audio(audio_bytes, gemini_key)
         if not transcript:
-            return [tg_resp("sendMessage", chat_id, text="Не удалось распознать речь.")]
+            return tg_resp("sendMessage", chat_id, text="Не удалось распознать речь.")
 
         return await handle_text(chat_id, user_id, transcript)
     except Exception as e:
         logger.error("Voice error: %s", e)
-        return [tg_resp("sendMessage", chat_id, text="Не удалось обработать голосовое.")]
+        return tg_resp("sendMessage", chat_id, text="Не удалось обработать голосовое.")
 
 
 async def extract_and_save_facts(text: str, user_id: int):
@@ -359,8 +359,7 @@ async def extract_and_save_facts(text: str, user_id: int):
         logger.error("Fact extraction error: %s", e)
 
 
-async def generate_briefing(chat_id: int) -> list[dict]:
-    responses = [tg_resp("sendChatAction", chat_id, action="typing")]
+async def generate_briefing(chat_id: int) -> dict:
     x_data, reddit_data, news_data = [], [], []
 
     try:
@@ -397,9 +396,7 @@ async def generate_briefing(chat_id: int) -> list[dict]:
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
         logger.info("Briefing generated")
-        responses.append(tg_resp("sendMessage", chat_id, text=briefing))
+        return tg_resp("sendMessage", chat_id, text=briefing)
     except Exception as e:
         logger.error("Briefing generation error: %s", e)
-        responses.append(tg_resp("sendMessage", chat_id, text="Не удалось сгенерировать брифинг."))
-
-    return responses
+        return tg_resp("sendMessage", chat_id, text="Не удалось сгенерировать брифинг.")
