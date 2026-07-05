@@ -36,6 +36,8 @@ The bot uses the **Webhook Response Pattern**: handler returns `dict` with `meth
 | `DATASET_REPO` | yes | `ShnekAI/telegram-bot-data` |
 | `SPACE_URL` | yes | `ShnekAI-telegram-bot.hf.space` (without https://) |
 | `TAVILY_API_KEY` | no | Web search (1000 req/month) |
+| `REDDIT_CLIENT_ID` | no | Reddit trends OAuth (script app) |
+| `REDDIT_CLIENT_SECRET` | no | Reddit trends OAuth (script app) |
 
 ---
 
@@ -147,7 +149,7 @@ Image and voice handling was removed because HF Spaces blocks `api.telegram.org`
 | OpenRouter | `Authorization: Bearer` | $1 credit | ✅ Working |
 | Tavily | `Authorization: Bearer` | 1000 req/month | ✅ Working |
 | Hacker News Firebase API | None | unlimited | ✅ Working |
-| Reddit (`/r/{sub}/hot.json`) | User-Agent header | rate limited | ✅ Working |
+| Reddit (`oauth.reddit.com`) | OAuth app-only (client_credentials) | 100 QPM | ✅ Working (needs `REDDIT_CLIENT_ID/SECRET`) |
 
 ### Model Fallback Chain
 ```python

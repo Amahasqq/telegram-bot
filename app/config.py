@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     telegram_webhook_secret: SecretStr
     openrouter_api_key: SecretStr
     tavily_api_key: SecretStr | None = None
+    reddit_client_id: SecretStr | None = None
+    reddit_client_secret: SecretStr | None = None
     hf_token: SecretStr
     dataset_repo: str
     space_url: str

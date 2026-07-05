@@ -132,12 +132,15 @@ async def test_briefing_command():
         mock_memory.log_costs = AsyncMock()
         with patch("app.handlers.briefing.call_openrouter") as mock_or:
             mock_or.return_value = ("Test briefing content", {"prompt_tokens": 10, "completion_tokens": 20})
-            with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[])):
-                with patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])):
-                    with patch("app.handlers.briefing.settings") as mock_settings:
-                        mock_settings.tavily_api_key = None
+            with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[])), \
+                 patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
+                 patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
+                 patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
+                 patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+                with patch("app.handlers.briefing.settings") as mock_settings:
+                    mock_settings.tavily_api_key = None
 
-                        result = await generate_briefing(123)
+                    result = await generate_briefing(123)
 
-                        assert result["method"] == "sendMessage"
-                        assert "Briefing" in str(result["text"])
+                    assert result["method"] == "sendMessage"
+                    assert "брифинг" in str(result["text"]).lower()
