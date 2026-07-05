@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -18,8 +17,7 @@ from services import (
     search_web,
     search_x_trends,
     get_reddit_trends,
-    send_telegram,
-    send_long_message,
+    tg_resp,
     logger,
 )
 
@@ -49,10 +47,6 @@ def is_rate_limited(user_id: int) -> bool:
         return True
     user_last_msg[user_id] = now
     return False
-
-
-async def notify_admin(text: str):
-    await send_telegram(settings.allowed_user_id, text, telegram_token, parse_mode=None)
 
 
 def build_system_prompt(user_facts: list[str]) -> str:
@@ -122,7 +116,6 @@ async def lifespan(app: FastAPI):
             logger.info("Webhook registered: https://%s/webhook", settings.space_url)
         except Exception as e:
             logger.error("Webhook registration failed (non-critical): %s", e)
-            logger.info("Bot will start anyway - register webhook later or use polling fallback")
 
     yield
 
@@ -159,7 +152,7 @@ async def webhook(request: Request):
     update_id = data.get("update_id")
 
     if update_id in processed_updates:
-        return {"ok": True, "dup": True}
+        return []
     processed_updates.add(update_id)
     if len(processed_updates) > 1000:
         processed_updates.clear()
@@ -169,15 +162,13 @@ async def webhook(request: Request):
     user_id = msg.get("from", {}).get("id")
 
     if not chat_id or not user_id:
-        return {"ok": False}
+        return []
 
     if user_id != settings.allowed_user_id:
-        await send_telegram(chat_id, "Доступ закрыт.", telegram_token)
-        return {"ok": True}
+        return [tg_resp("sendMessage", chat_id, text="Доступ закрыт.")]
 
     if is_rate_limited(user_id):
-        await send_telegram(chat_id, "Шнеку нужно передохнуть. Подожди немного.", telegram_token)
-        return {"ok": True}
+        return [tg_resp("sendMessage", chat_id, text="Шнеку нужно передохнуть. Подожди немного.")]
 
     text = msg.get("text", "")
     entities = msg.get("entities", [])
@@ -187,50 +178,43 @@ async def webhook(request: Request):
 
     try:
         if "photo" in msg:
-            await handle_image(chat_id, user_id, msg["photo"][-1])
+            return await handle_image(chat_id, user_id, msg["photo"][-1])
         elif "voice" in msg:
-            await handle_voice(chat_id, user_id, msg["voice"]["file_id"])
+            return await handle_voice(chat_id, user_id, msg["voice"]["file_id"])
         else:
-            await handle_text(chat_id, user_id, text)
+            return await handle_text(chat_id, user_id, text)
     except Exception as e:
         logger.error("Handler error: %s", e)
-        await send_telegram(chat_id, "Произошла ошибка. Попробуй позже.", telegram_token)
-
-    return {"ok": True}
+        return [tg_resp("sendMessage", chat_id, text="Произошла ошибка. Попробуй позже.")]
 
 
-async def handle_command(chat_id: int, user_id: int, text: str):
+async def handle_command(chat_id: int, user_id: int, text: str) -> list[dict]:
     cmd = text.split()[0].lower()
 
     if cmd == "/start":
-        await send_telegram(
-            chat_id,
+        return [tg_resp("sendMessage", chat_id, text=(
             "🤖 Привет! Я AI-бот.\n\n"
             "• Отвечаю на вопросы\n"
             "• Понимаю картинки и голосовые\n"
             "• Ищу в интернете\n"
             "• Помню контекст\n\n"
-            "Команды: /clear, /notes, /clearnotes, /costs",
-            telegram_token,
-        )
+            "Команды: /clear, /notes, /clearnotes, /costs, /briefing"
+        ))]
 
     elif cmd == "/clear":
         await memory.clear_history(str(user_id))
-        await send_telegram(chat_id, "История диалога очищена.", telegram_token)
+        return [tg_resp("sendMessage", chat_id, text="История диалога очищена.")]
 
     elif cmd == "/notes":
         notes = await memory.get_notes()
         if not notes:
-            await send_telegram(chat_id, "Заметок пока нет.", telegram_token)
-        else:
-            text = "📝 Последние заметки:\n\n" + "\n".join(
-                f"• {n['text']}" for n in notes
-            )
-            await send_telegram(chat_id, text[:4000], telegram_token)
+            return [tg_resp("sendMessage", chat_id, text="Заметок пока нет.")]
+        text = "📝 Последние заметки:\n\n" + "\n".join(f"• {n['text']}" for n in notes)
+        return [tg_resp("sendMessage", chat_id, text=text[:4000])]
 
     elif cmd == "/clearnotes":
         await memory.clear_notes()
-        await send_telegram(chat_id, "Все заметки удалены.", telegram_token)
+        return [tg_resp("sendMessage", chat_id, text="Все заметки удалены.")]
 
     elif cmd == "/costs":
         costs = await memory.get_costs()
@@ -243,14 +227,15 @@ async def handle_command(chat_id: int, user_id: int, text: str):
             f"Всего: {costs.get('total_input_tokens', 0)} in / {costs.get('total_output_tokens', 0)} out токенов\n"
             f"Примерная стоимость: ${total:.4f}"
         )
-        await send_telegram(chat_id, text, telegram_token)
+        return [tg_resp("sendMessage", chat_id, text=text)]
 
-    return {"ok": True}
+    elif cmd == "/briefing":
+        return await generate_briefing(chat_id)
+
+    return [tg_resp("sendMessage", chat_id, text="Неизвестная команда.")]
 
 
-async def handle_text(chat_id: int, user_id: int, text: str):
-    await send_telegram(chat_id, "🤔 Думаю...", telegram_token, parse_mode=None)
-
+async def handle_text(chat_id: int, user_id: int, text: str) -> list[dict]:
     history = []
     user_facts = []
     search_results = []
@@ -280,18 +265,14 @@ async def handle_text(chat_id: int, user_id: int, text: str):
         await memory.add_message(str(user_id), "assistant", answer)
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-        await send_long_message(chat_id, answer, telegram_token)
-
         asyncio.create_task(extract_and_save_facts(text, user_id))
+        return [tg_resp("sendMessage", chat_id, text=answer)]
     except Exception as e:
         logger.error("OpenRouter error: %s", e)
-        await send_telegram(chat_id, "Бот временно недоступен. Попробуй позже.", telegram_token)
-        await notify_admin(f"OpenRouter error: {e}")
+        return [tg_resp("sendMessage", chat_id, text="Бот временно недоступен. Попробуй позже.")]
 
 
-async def handle_image(chat_id: int, user_id: int, photo: dict):
-    await send_telegram(chat_id, "🖼 Анализирую изображение...", telegram_token, parse_mode=None)
-
+async def handle_image(chat_id: int, user_id: int, photo: dict) -> list[dict]:
     try:
         file_id = photo["file_id"]
         async with httpx.AsyncClient() as cl:
@@ -334,15 +315,13 @@ async def handle_image(chat_id: int, user_id: int, photo: dict):
         await memory.add_message(str(user_id), "assistant", answer)
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-        await send_long_message(chat_id, answer, telegram_token)
+        return [tg_resp("sendMessage", chat_id, text=answer)]
     except Exception as e:
         logger.error("Image error: %s", e)
-        await send_telegram(chat_id, "Не удалось обработать изображение.", telegram_token)
+        return [tg_resp("sendMessage", chat_id, text="Не удалось обработать изображение.")]
 
 
-async def handle_voice(chat_id: int, user_id: int, file_id: str):
-    await send_telegram(chat_id, "🎤 Распознаю голосовое...", telegram_token, parse_mode=None)
-
+async def handle_voice(chat_id: int, user_id: int, file_id: str) -> list[dict]:
     try:
         async with httpx.AsyncClient() as cl:
             r = await cl.get(
@@ -359,19 +338,16 @@ async def handle_voice(chat_id: int, user_id: int, file_id: str):
 
         gemini_key = settings.google_genai_api_key.get_secret_value() if settings.google_genai_api_key else ""
         if not gemini_key:
-            await send_telegram(chat_id, "Голосовые сообщения не поддерживаются (не настроен Gemini).", telegram_token)
-            return
+            return [tg_resp("sendMessage", chat_id, text="Голосовые сообщения не поддерживаются (не настроен Gemini).")]
 
         transcript = await transcribe_audio(audio_bytes, gemini_key)
         if not transcript:
-            await send_telegram(chat_id, "Не удалось распознать речь.", telegram_token)
-            return
+            return [tg_resp("sendMessage", chat_id, text="Не удалось распознать речь.")]
 
-        await send_telegram(chat_id, f"📝 Распознано: {transcript[:200]}", telegram_token, parse_mode=None)
-        await handle_text(chat_id, user_id, transcript)
+        return await handle_text(chat_id, user_id, transcript)
     except Exception as e:
         logger.error("Voice error: %s", e)
-        await send_telegram(chat_id, "Не удалось обработать голосовое.", telegram_token)
+        return [tg_resp("sendMessage", chat_id, text="Не удалось обработать голосовое.")]
 
 
 async def extract_and_save_facts(text: str, user_id: int):
@@ -383,14 +359,8 @@ async def extract_and_save_facts(text: str, user_id: int):
         logger.error("Fact extraction error: %s", e)
 
 
-@app.post("/daily-briefing")
-async def daily_briefing(request: Request):
-    secret = request.headers.get("Authorization")
-    if secret and secret != f"Bearer {webhook_secret}":
-        return Response(status_code=403)
-
-    logger.info("Generating daily briefing...")
-
+async def generate_briefing(chat_id: int) -> list[dict]:
+    responses = [tg_resp("sendChatAction", chat_id, action="typing")]
     x_data, reddit_data, news_data = [], [], []
 
     try:
@@ -423,13 +393,13 @@ async def daily_briefing(request: Request):
              {"role": "user", "content": prompt}],
             openrouter_key,
         )
-        briefing = f"Доброе утро ☀️\n\n{answer}"
-        await send_telegram(settings.allowed_user_id, briefing, telegram_token, parse_mode=None)
+        briefing = f"📊 Ежедневный брифинг\n\n{answer}"
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-        logger.info("Briefing sent")
+        logger.info("Briefing generated")
+        responses.append(tg_resp("sendMessage", chat_id, text=briefing))
     except Exception as e:
         logger.error("Briefing generation error: %s", e)
-        await send_telegram(settings.allowed_user_id, "Не удалось сгенерировать брифинг.", telegram_token)
+        responses.append(tg_resp("sendMessage", chat_id, text="Не удалось сгенерировать брифинг."))
 
-    return {"ok": True}
+    return responses

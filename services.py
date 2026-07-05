@@ -303,18 +303,5 @@ async def get_reddit_trends() -> list[dict]:
     return results[:10]
 
 
-async def send_telegram(chat_id: int, text: str, token: str, parse_mode: str = "MarkdownV2"):
-    try:
-        async with httpx.AsyncClient(timeout=10) as cl:
-            body = {"chat_id": chat_id, "text": text[:4000], "parse_mode": parse_mode}
-            r = await cl.post(f"https://api.telegram.org/bot{token}/sendMessage", json=body)
-            if r.status_code == 400:
-                body.pop("parse_mode")
-                await cl.post(f"https://api.telegram.org/bot{token}/sendMessage", json=body)
-    except Exception as e:
-        logger.error("Telegram send error: %s", e)
-
-
-async def send_long_message(chat_id: int, text: str, token: str):
-    for i in range(0, len(text), 4000):
-        await send_telegram(chat_id, text[i:i + 4000], token, parse_mode=None)
+def tg_resp(method: str, chat_id: int, **kwargs) -> dict:
+    return {"method": method, "chat_id": chat_id, **kwargs}
