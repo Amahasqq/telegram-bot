@@ -1,5 +1,6 @@
 import time
 import logging
+from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -35,6 +36,7 @@ def is_rate_limited(user_id: int) -> bool:
     return False
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     get_client()
     await memory.load()
@@ -85,9 +87,8 @@ async def webhook(request: Request) -> dict[str, object]:
         logger.error("Validation error: %s", e)
         return {}
 
-    if memory.is_update_processed(update.update_id):
+    if not await memory.claim_update(update.update_id):
         return {}
-    await memory.mark_update_processed(update.update_id)
 
     if not update.message:
         return {}

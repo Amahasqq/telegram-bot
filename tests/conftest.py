@@ -1,14 +1,26 @@
+import os
 import sys
 import unittest.mock as um
 
-for mod_name in ["huggingface_hub", "fastapi", "fastapi.middleware", "fastapi.middleware.cors", "starlette", "starlette.responses", "starlette.datastructures", "starlette.middleware", "uvicorn"]:
-    sys.modules[mod_name] = um.MagicMock()
+# Provide dummy settings so `app.config.Settings()` validates at import time
+# without requiring real secrets. Use setdefault so a real env still wins.
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
+os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET", "test-secret")
+os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter")
+os.environ.setdefault("HF_TOKEN", "test-hf")
+os.environ.setdefault("DATASET_REPO", "test/test")
+os.environ.setdefault("SPACE_URL", "test.hf.space")
 
-from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+# huggingface_hub performs network I/O on use; stub it so the suite stays
+# fully offline. FastAPI/Starlette/httpx are intentionally left real so the
+# integration tests exercise the actual ASGI app.
+sys.modules.setdefault("huggingface_hub", um.MagicMock())
 
-import pytest
-import pytest_asyncio
+from collections.abc import AsyncGenerator  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
 
 
 @pytest.fixture

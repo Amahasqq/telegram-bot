@@ -16,7 +16,6 @@ async def test_load_fresh_start(mock_hf_api):
         assert mm.data["conversations"] == {}
         assert mm.data["notes"] == []
         assert mm.data["user_facts"] == {}
-        assert mm.data["rate_limits"] == {}
         assert mm.data["processed_updates"] == []
         assert mm.data["user_chat_ids"] == {}
         assert mm.data["costs"] == DEFAULT_COSTS
@@ -48,7 +47,6 @@ async def test_load_existing_data(mock_hf_api):
         assert mm.data["notes"][0]["text"] == "test"
         assert mm.data["user_facts"]["1"] == ["likes python"]
         assert mm.data["costs"]["total_input_tokens"] == 100
-        assert mm.data["rate_limits"] == {}
         assert mm.data["processed_updates"] == []
         assert mm.data["user_chat_ids"] == {}
     finally:
@@ -154,25 +152,16 @@ async def test_log_costs_incremental(memory_manager):
 
 
 @pytest.mark.asyncio
-async def test_user_chat_id(memory_manager):
+async def test_set_user_chat_id(memory_manager):
     await memory_manager.set_user_chat_id("1", 12345)
-    assert memory_manager.get_user_chat_id("1") == 12345
-    assert memory_manager.get_user_chat_id("nonexistent") is None
+    assert memory_manager.data["user_chat_ids"]["1"] == 12345
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_persistence(memory_manager):
-    await memory_manager.set_rate_limit("1", 1000.0)
-    assert memory_manager.get_rate_limit("1") == 1000.0
-    assert memory_manager.get_rate_limit("nonexistent") is None
-
-
-@pytest.mark.asyncio
-async def test_update_deduplication(memory_manager):
-    assert memory_manager.is_update_processed(1) is False
-    await memory_manager.mark_update_processed(1)
-    assert memory_manager.is_update_processed(1) is True
-    assert memory_manager.is_update_processed(2) is False
+async def test_claim_update_deduplication(memory_manager):
+    assert await memory_manager.claim_update(1) is True
+    assert await memory_manager.claim_update(1) is False
+    assert await memory_manager.claim_update(2) is True
 
 
 @pytest.mark.asyncio

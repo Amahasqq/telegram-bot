@@ -33,6 +33,30 @@ async def test_clear_command():
 
 
 @pytest.mark.asyncio
+async def test_note_command_saves():
+    with patch("app.handlers.commands.memory") as mock_memory:
+        mock_memory.add_note = AsyncMock()
+
+        result = await handle_command(123, 1, "/note buy milk")
+
+        assert result["method"] == "sendMessage"
+        assert "saved" in str(result["text"]).lower()
+        mock_memory.add_note.assert_awaited_once_with("buy milk")
+
+
+@pytest.mark.asyncio
+async def test_note_command_empty():
+    with patch("app.handlers.commands.memory") as mock_memory:
+        mock_memory.add_note = AsyncMock()
+
+        result = await handle_command(123, 1, "/note")
+
+        assert result["method"] == "sendMessage"
+        assert "Usage" in str(result["text"])
+        mock_memory.add_note.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_notes_with_notes():
     with patch("app.handlers.commands.memory") as mock_memory:
         mock_memory.get_notes = AsyncMock(return_value=[

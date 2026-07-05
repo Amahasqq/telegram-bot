@@ -13,6 +13,10 @@ from app.utils.helpers import build_system_prompt, build_messages, truncate
 
 logger = logging.getLogger(__name__)
 
+# Keep strong references to fire-and-forget tasks so they are not garbage
+# collected mid-execution (see CPython asyncio.create_task docs).
+_background_tasks: set[asyncio.Task] = set()
+
 PROMPTS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "prompts",
@@ -60,7 +64,9 @@ async def handle_text(chat_id: int, user_id: int, text: str) -> dict[str, object
         await memory.add_message(str(user_id), "assistant", answer)
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-        asyncio.create_task(_extract_and_save_facts(text, user_id, openrouter_key))
+        task = asyncio.create_task(_extract_and_save_facts(text, user_id, openrouter_key))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except Exception as e:
         logger.error("Memory error for user %s: %s", user_id, e)
 

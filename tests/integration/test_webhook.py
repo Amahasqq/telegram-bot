@@ -1,16 +1,19 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+
+
+def _client() -> AsyncClient:
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
 @pytest.fixture
 def mock_memory():
     with patch("app.main.memory") as mock:
-        mock.is_update_processed = MagicMock(return_value=False)
-        mock.mark_update_processed = AsyncMock()
+        mock.claim_update = AsyncMock(return_value=True)
         mock.set_user_chat_id = AsyncMock()
         mock.get_user_history = AsyncMock(return_value=[])
         mock.get_user_facts = AsyncMock(return_value=[])
@@ -38,7 +41,7 @@ async def test_webhook_valid_update(mock_memory):
     with patch("app.main.handle_text") as mock_handle:
         mock_handle.return_value = {"method": "sendMessage", "chat_id": 123, "text": "AI response"}
         with patch("app.main.verify_webhook_secret", AsyncMock(return_value=True)):
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with _client() as client:
                 response = await client.post("/webhook", json=_valid_update(), headers={"X-Telegram-Bot-Api-Secret-Token": "test"})
 
                 assert response.status_code == 200
@@ -51,7 +54,7 @@ async def test_webhook_valid_update(mock_memory):
 @pytest.mark.asyncio
 async def test_webhook_invalid_secret(mock_memory):
     with patch("app.main.verify_webhook_secret", AsyncMock(return_value=False)):
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with _client() as client:
             response = await client.post("/webhook", json=_valid_update(), headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"})
 
             assert response.status_code == 403
@@ -60,7 +63,7 @@ async def test_webhook_invalid_secret(mock_memory):
 @pytest.mark.asyncio
 async def test_webhook_empty_body(mock_memory):
     with patch("app.main.verify_webhook_secret", AsyncMock(return_value=True)):
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with _client() as client:
             response = await client.post("/webhook", json={}, headers={"X-Telegram-Bot-Api-Secret-Token": "test"})
 
             assert response.status_code == 200
@@ -69,9 +72,9 @@ async def test_webhook_empty_body(mock_memory):
 
 @pytest.mark.asyncio
 async def test_webhook_deduplication(mock_memory):
-    mock_memory.is_update_processed = MagicMock(return_value=True)
+    mock_memory.claim_update = AsyncMock(return_value=False)
     with patch("app.main.verify_webhook_secret", AsyncMock(return_value=True)):
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with _client() as client:
             response = await client.post("/webhook", json=_valid_update(), headers={"X-Telegram-Bot-Api-Secret-Token": "test"})
 
             assert response.status_code == 200
@@ -81,7 +84,7 @@ async def test_webhook_deduplication(mock_memory):
 @pytest.mark.asyncio
 async def test_health_endpoint(mock_memory):
     mock_memory.data = {"conversations": {"1": [], "2": []}}
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with _client() as client:
         response = await client.get("/health")
 
         assert response.status_code == 200

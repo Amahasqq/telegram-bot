@@ -2,7 +2,12 @@ import logging
 
 from httpx import Timeout as HttpxTimeout
 
-from app.constants import TAVILY_TIMEOUT, TAVILY_MAX_RESULTS, TAVILY_QUERY_LENGTH
+from app.constants import (
+    TAVILY_TIMEOUT,
+    TAVILY_MAX_RESULTS,
+    TAVILY_QUERY_LENGTH,
+    TAVILY_MIN_REMAINING,
+)
 from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
@@ -12,7 +17,7 @@ _tavily_remaining = 1000
 
 async def search_web(query: str, api_key: str) -> list[dict]:
     global _tavily_remaining
-    if _tavily_remaining < 50:
+    if _tavily_remaining < TAVILY_MIN_REMAINING:
         return []
     try:
         client = get_client()

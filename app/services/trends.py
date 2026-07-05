@@ -10,6 +10,7 @@ from app.constants import (
     HN_TOP_STORIES,
     HN_RESULTS,
     REDDIT_POSTS_PER_SUB,
+    REDDIT_RESULTS,
     REDDIT_SUBREDDITS,
 )
 from app.services.http_client import get_client
@@ -85,7 +86,7 @@ async def get_reddit_trends() -> list[dict]:
         results = await asyncio.gather(*tasks)
         all_posts = [post for sublist in results for post in sublist]
         all_posts.sort(key=lambda x: x.get("score", 0), reverse=True)
-        return all_posts[:10]
+        return all_posts[:REDDIT_RESULTS]
     except Exception as e:
         logger.error("Reddit error: %s", e)
         return []

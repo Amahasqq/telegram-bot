@@ -18,12 +18,19 @@ async def handle_command(chat_id: int, user_id: int, text: str) -> dict[str, obj
             "- Search the web\n"
             "- Remember facts about you\n"
             "- Generate tech briefings\n\n"
-            "Commands: /clear, /notes, /clearnotes, /costs, /briefing"
+            "Commands: /clear, /note, /notes, /clearnotes, /costs, /briefing"
         ))
 
     if cmd == "/clear":
         await memory.clear_history(str(user_id))
         return tg_resp("sendMessage", chat_id, text="Conversation history cleared.")
+
+    if cmd == "/note":
+        note_text = text[len("/note"):].strip()
+        if not note_text:
+            return tg_resp("sendMessage", chat_id, text="Usage: /note <text>")
+        await memory.add_note(note_text)
+        return tg_resp("sendMessage", chat_id, text="Note saved.")
 
     if cmd == "/notes":
         notes = await memory.get_notes()

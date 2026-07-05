@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +18,9 @@ from app.constants import (
 
 logger = logging.getLogger(__name__)
 
+DATA_FILENAME = "bot_data.json"
+LOCAL_DATA_PATH = "/tmp/bot_data.json"
+
 DEFAULT_COSTS: dict[str, Any] = {
     "total_input_tokens": 0,
     "total_output_tokens": 0,
@@ -27,6 +31,8 @@ DEFAULT_COSTS: dict[str, Any] = {
 
 
 class MemoryManager:
+    """Persists bot state to a Hugging Face Dataset with periodic background sync."""
+
     def __init__(self, hf_token: str, dataset_repo: str) -> None:
         self.api = HfApi(token=hf_token)
         self.dataset_repo = dataset_repo
@@ -41,7 +47,7 @@ class MemoryManager:
             path = await asyncio.to_thread(
                 self.api.hf_hub_download,
                 repo_id=self.dataset_repo,
-                filename="bot_data.json",
+                filename=DATA_FILENAME,
                 local_dir="/tmp",
                 token=self.api.token,
             )
@@ -57,47 +63,68 @@ class MemoryManager:
             "notes": raw.get("notes", []),
             "costs": raw.get("costs", dict(DEFAULT_COSTS)),
             "user_facts": raw.get("user_facts", {}),
-            "rate_limits": raw.get("rate_limits", {}),
             "processed_updates": raw.get("processed_updates", []),
             "user_chat_ids": raw.get("user_chat_ids", {}),
         }
 
-    async def _save_now(self) -> None:
-        path = "/tmp/bot_data.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, ensure_ascii=False)
-        await asyncio.to_thread(
-            self.api.upload_file,
+    def _write_and_upload(self, payload: str) -> None:
+        """Blocking file write + upload; always runs in a worker thread."""
+        with open(LOCAL_DATA_PATH, "w", encoding="utf-8") as f:
+            f.write(payload)
+        self.api.upload_file(
             repo_id=self.dataset_repo,
-            path_or_fileobj=path,
-            path_in_repo="bot_data.json",
+            path_or_fileobj=LOCAL_DATA_PATH,
+            path_in_repo=DATA_FILENAME,
             token=self.api.token,
         )
-        self.last_sync = asyncio.get_event_loop().time()
-        self.dirty = False
+
+    async def _save_now(self, payload: str) -> None:
+        await asyncio.to_thread(self._write_and_upload, payload)
         logger.info("Dataset saved")
 
     async def save(self, force: bool = False) -> None:
+        # Serialize the snapshot under the lock (fast, in-memory), then perform
+        # the slow file write + network upload OUTSIDE the lock so message
+        # handlers are not blocked for the duration of the upload.
         async with self.lock:
             if not self.dirty and not force:
                 return
-            now = asyncio.get_event_loop().time()
-            if force or now - self.last_sync > HF_SYNC_INTERVAL:
-                await self._save_now()
+            now = asyncio.get_running_loop().time()
+            if not (force or now - self.last_sync > HF_SYNC_INTERVAL):
+                return
+            payload = json.dumps(self.data, ensure_ascii=False)
+            self.last_sync = now
+            self.dirty = False
+
+        try:
+            await self._save_now(payload)
+        except Exception:
+            self.dirty = True  # keep dirty so the next sync retries
+            raise
 
     async def _bg_sync(self) -> None:
         while True:
             await asyncio.sleep(HF_SYNC_INTERVAL)
-            await self.save()
+            try:
+                await self.save()
+            except Exception as e:
+                # Never let a transient upload failure kill the sync loop.
+                logger.error("Background sync failed: %s", e)
 
     def start(self) -> None:
-        loop = asyncio.get_event_loop()
-        self._bg_task = loop.create_task(self._bg_sync())
+        self._bg_task = asyncio.create_task(self._bg_sync())
 
     async def stop(self) -> None:
         if self._bg_task:
             self._bg_task.cancel()
-        await asyncio.wait_for(self.save(force=True), timeout=10.0)
+            try:
+                await self._bg_task
+            except asyncio.CancelledError:
+                pass
+        try:
+            await asyncio.wait_for(self.save(force=True), timeout=10.0)
+        except Exception as e:
+            logger.error("Final save on shutdown failed: %s", e)
 
     # User chat_id mapping
     async def set_user_chat_id(self, user_id: str, chat_id: int) -> None:
@@ -105,37 +132,28 @@ class MemoryManager:
             self.data.setdefault("user_chat_ids", {})[user_id] = chat_id
             self.dirty = True
 
-    def get_user_chat_id(self, user_id: str) -> int | None:
-        return self.data.get("user_chat_ids", {}).get(user_id)
+    # Processed updates (idempotency for Telegram webhook retries)
+    async def claim_update(self, update_id: int) -> bool:
+        """Atomically mark an update as processed.
 
-    # Rate limits
-    async def set_rate_limit(self, user_id: str, timestamp: float) -> None:
-        async with self.lock:
-            self.data.setdefault("rate_limits", {})[user_id] = timestamp
-            self.dirty = True
-
-    def get_rate_limit(self, user_id: str) -> float | None:
-        return self.data.get("rate_limits", {}).get(user_id)
-
-    # Processed updates
-    async def mark_update_processed(self, update_id: int) -> None:
+        Returns True if the update is new (and now claimed), False if it was
+        already processed. Doing check-and-mark under a single lock prevents the
+        race where Telegram retries deliver the same update concurrently.
+        """
         async with self.lock:
             updates = self.data.setdefault("processed_updates", [])
-            updates.append({"update_id": update_id, "ts": asyncio.get_event_loop().time()})
+            if any(u.get("update_id") == update_id for u in updates):
+                return False
+            updates.append({"update_id": update_id, "ts": time.time()})
             if len(updates) > MAX_PROCESSED_UPDATES:
-                cutoff = asyncio.get_event_loop().time() - PROCESSED_UPDATES_TTL_HOURS * 3600
+                cutoff = time.time() - PROCESSED_UPDATES_TTL_HOURS * 3600
                 self.data["processed_updates"] = [u for u in updates if u.get("ts", 0) > cutoff]
             self.dirty = True
-
-    def is_update_processed(self, update_id: int) -> bool:
-        for u in self.data.get("processed_updates", []):
-            if u.get("update_id") == update_id:
-                return True
-        return False
+            return True
 
     # Conversations
-    async def get_user_history(self, user_id: str) -> list:
-        return self.data.setdefault("conversations", {}).get(user_id, [])
+    async def get_user_history(self, user_id: str) -> list[dict]:
+        return self.data.get("conversations", {}).get(user_id, [])
 
     async def add_message(self, user_id: str, role: str, content: str) -> None:
         async with self.lock:
@@ -151,22 +169,23 @@ class MemoryManager:
             self.dirty = True
 
     # User facts
-    async def get_user_facts(self, user_id: str) -> list:
-        return self.data.setdefault("user_facts", {}).get(user_id, [])
+    async def get_user_facts(self, user_id: str) -> list[str]:
+        return self.data.get("user_facts", {}).get(user_id, [])
 
     async def add_facts(self, user_id: str, facts: list[str]) -> None:
         if not facts:
             return
         async with self.lock:
-            existing = set(f.lower() for f in self.data.setdefault("user_facts", {}).setdefault(user_id, []))
+            stored = self.data.setdefault("user_facts", {}).setdefault(user_id, [])
+            existing = {f.lower() for f in stored}
             for fact in facts:
                 if fact.lower() not in existing:
-                    self.data["user_facts"][user_id].append(fact)
+                    stored.append(fact)
                     existing.add(fact.lower())
             self.dirty = True
 
     # Notes
-    async def get_notes(self) -> list:
+    async def get_notes(self) -> list[dict]:
         return self.data.get("notes", [])[-10:]
 
     async def add_note(self, text: str) -> None:

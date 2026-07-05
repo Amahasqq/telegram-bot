@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 BRIEFING_PROMPT = """You are a tech briefing assistant. Create a concise summary of AI/tech news.
 
-X data: {x_data}
+Hacker News data: {hn_data}
 Reddit data: {reddit_data}
 News data: {news_data}
 
 Structure your response:
 1. **Top Story**: 1-2 sentences about the most important news
-2. **Community Buzz** (X + Reddit): Key discussions and trends
+2. **Community Buzz** (Hacker News + Reddit): Key discussions and trends
 3. **Notable**: Other interesting items
 
 Keep it brief, engaging, and informative."""
@@ -46,7 +46,7 @@ async def generate_briefing(chat_id: int) -> dict[str, object]:
     news_data = news_results[:3] if isinstance(news_results, list) else []
 
     prompt = BRIEFING_PROMPT.format(
-        x_data=json.dumps(hn_data, ensure_ascii=False)[:2000],
+        hn_data=json.dumps(hn_data, ensure_ascii=False)[:2000],
         reddit_data=json.dumps(reddit_data, ensure_ascii=False)[:2000],
         news_data=json.dumps(news_data, ensure_ascii=False)[:1000],
     )

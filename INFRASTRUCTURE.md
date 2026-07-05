@@ -204,6 +204,7 @@ Expected: `{"url": ".../webhook", "pending_update_count": 0, "last_error_date": 
 
 - `/start` — Welcome message
 - `/clear` — Clear conversation history
+- `/note <text>` — Save a note
 - `/notes` — Last 10 notes
 - `/clearnotes` — Delete all notes
 - `/costs` — Token usage and estimated cost
