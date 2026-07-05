@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 
+import httpx
 from httpx import Timeout as HttpxTimeout
 
 from app.constants import MODEL_CHAIN, OPENROUTER_URL, OPENROUTER_TIMEOUT, OPENROUTER_RETRIES
@@ -49,10 +50,20 @@ async def call_openrouter(messages: list, api_key: str) -> tuple[str, dict]:
         for attempt in range(OPENROUTER_RETRIES):
             try:
                 return await _call_model(model, messages, api_key)
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                logger.warning("Model %s attempt %d failed: %s", model, attempt + 1, e)
+                # A rate-limited model won't recover in-loop; skip to the next
+                # model instead of amplifying 429s by hammering the same one.
+                if e.response is not None and e.response.status_code == 429:
+                    break
+                if attempt < OPENROUTER_RETRIES - 1:
+                    await asyncio.sleep(2**attempt)
             except Exception as e:
                 last_error = e
                 logger.warning("Model %s attempt %d failed: %s", model, attempt + 1, e)
-                await asyncio.sleep(2**attempt)
+                if attempt < OPENROUTER_RETRIES - 1:
+                    await asyncio.sleep(2**attempt)
 
     raise ExternalAPIError(f"All models failed: {last_error}")
 

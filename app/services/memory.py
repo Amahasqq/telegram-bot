@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 DATA_FILENAME = "bot_data.json"
 LOCAL_DATA_PATH = "/tmp/bot_data.json"
+REPO_TYPE = "dataset"
 
 DEFAULT_COSTS: dict[str, Any] = {
     "total_input_tokens": 0,
@@ -43,11 +44,25 @@ class MemoryManager:
         self._bg_task: asyncio.Task[None] | None = None
 
     async def load(self) -> None:
+        # Ensure the dataset repo exists (idempotent) so the first save can
+        # upload into it instead of 404-ing on a missing repository.
+        try:
+            await asyncio.to_thread(
+                self.api.create_repo,
+                repo_id=self.dataset_repo,
+                repo_type=REPO_TYPE,
+                private=True,
+                exist_ok=True,
+            )
+        except Exception as e:
+            logger.warning("Dataset repo ensure failed: %s", e)
+
         try:
             path = await asyncio.to_thread(
                 self.api.hf_hub_download,
                 repo_id=self.dataset_repo,
                 filename=DATA_FILENAME,
+                repo_type=REPO_TYPE,
                 local_dir="/tmp",
                 token=self.api.token,
             )
@@ -75,6 +90,7 @@ class MemoryManager:
             repo_id=self.dataset_repo,
             path_or_fileobj=LOCAL_DATA_PATH,
             path_in_repo=DATA_FILENAME,
+            repo_type=REPO_TYPE,
             token=self.api.token,
         )
 
