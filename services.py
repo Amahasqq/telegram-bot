@@ -176,7 +176,7 @@ async def call_openrouter(messages: list, api_key: str, tools: list = None) -> t
                 )
                 r.raise_for_status()
                 data = r.json()
-                ch = data["choices"][0]["message"]["content"]
+                ch = data["choices"][0]["message"]["content"] or ""
                 u = data.get("usage", {})
                 return ch, {
                     "prompt_tokens": u.get("prompt_tokens", 0),
@@ -199,10 +199,15 @@ async def extract_facts(text: str, api_key: str) -> list:
     try:
         prompt = FACT_PROMPT.format(text=text[:1000])
         result, _ = await call_openrouter([{"role": "user", "content": prompt}], api_key)
+        if not result:
+            return []
         raw = result.strip().strip("`")
         if raw.lower().startswith("json"):
             raw = raw[4:].strip()
-        facts = json.loads(raw)
+        try:
+            facts = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return []
         return [str(f).strip() for f in facts if str(f).strip()] if isinstance(facts, list) else []
     except Exception as e:
         logger.error("Fact extraction error: %s", e)
@@ -249,25 +254,27 @@ async def search_web(query: str, api_key: str) -> list[dict]:
         return []
 
 
-async def search_x_trends(bearer: str) -> list[dict]:
-    if not bearer:
-        return []
+async def get_hackernews_trends() -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=15) as cl:
-            r = await cl.get(
-                "https://api.x.com/2/tweets/search/recent",
-                headers={"Authorization": f"Bearer {bearer}"},
-                params={
-                    "query": "AI OR tech OR artificial intelligence -is:retweet lang:en",
-                    "max_results": 10,
-                    "tweet.fields": "created_at,public_metrics",
-                    "sort_order": "recency",
-                },
-            )
+            r = await cl.get("https://hacker-news.firebaseio.com/v0/topstories.json")
             r.raise_for_status()
-            return r.json().get("data", [])
+            ids = r.json()[:15]
+            results = []
+            for sid in ids:
+                item = await cl.get(f"https://hacker-news.firebaseio.com/v0/item/{sid}.json")
+                if item.status_code != 200:
+                    continue
+                d = item.json()
+                results.append({
+                    "title": d.get("title", ""),
+                    "url": d.get("url", f"https://news.ycombinator.com/item?id={sid}"),
+                    "score": d.get("score", 0),
+                })
+            results.sort(key=lambda x: x["score"], reverse=True)
+            return results[:10]
     except Exception as e:
-        logger.error("X search error: %s", e)
+        logger.error("Hacker News error: %s", e)
         return []
 
 

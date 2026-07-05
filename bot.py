@@ -15,7 +15,7 @@ from services import (
     extract_facts,
     transcribe_audio,
     search_web,
-    search_x_trends,
+    get_hackernews_trends,
     get_reddit_trends,
     tg_resp,
     logger,
@@ -316,8 +316,8 @@ async def handle_image(chat_id: int, user_id: int, photo: dict) -> dict:
         if usage:
             await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
         return tg_resp("sendMessage", chat_id, text=answer)
-    except Exception as e:
-        logger.error("Image error: %s", e)
+    except Exception:
+        logger.exception("Image error")
         return tg_resp("sendMessage", chat_id, text="Не удалось обработать изображение.")
 
 
@@ -345,8 +345,8 @@ async def handle_voice(chat_id: int, user_id: int, file_id: str) -> dict:
             return tg_resp("sendMessage", chat_id, text="Не удалось распознать речь.")
 
         return await handle_text(chat_id, user_id, transcript)
-    except Exception as e:
-        logger.error("Voice error: %s", e)
+    except Exception:
+        logger.exception("Voice error")
         return tg_resp("sendMessage", chat_id, text="Не удалось обработать голосовое.")
 
 
@@ -360,13 +360,12 @@ async def extract_and_save_facts(text: str, user_id: int):
 
 
 async def generate_briefing(chat_id: int) -> dict:
-    x_data, reddit_data, news_data = [], [], []
+    hn_data, reddit_data, news_data = [], [], []
 
     try:
-        if settings.x_bearer_token:
-            x_data = await search_x_trends(settings.x_bearer_token.get_secret_value())
+        hn_data = await get_hackernews_trends()
     except Exception as e:
-        logger.error("Briefing X error: %s", e)
+        logger.error("Briefing HN error: %s", e)
 
     try:
         reddit_data = await get_reddit_trends()
@@ -381,7 +380,7 @@ async def generate_briefing(chat_id: int) -> dict:
         logger.error("Briefing Tavily error: %s", e)
 
     prompt = BRIEFING_PROMPT.format(
-        x_data=json.dumps(x_data, ensure_ascii=False)[:2000],
+        x_data=json.dumps(hn_data, ensure_ascii=False)[:2000],
         reddit_data=json.dumps(reddit_data, ensure_ascii=False)[:2000],
         news_data=json.dumps(news_data, ensure_ascii=False)[:1000],
     )
