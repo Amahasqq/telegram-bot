@@ -110,14 +110,19 @@ async def lifespan(app: FastAPI):
     memory.start()
 
     async with httpx.AsyncClient() as cl:
-        await cl.post(
-            f"https://api.telegram.org/bot{telegram_token}/setWebhook",
-            json={
-                "url": f"https://{settings.space_url}/webhook",
-                "secret_token": webhook_secret,
-            },
-        )
-    logger.info("Webhook registered: https://%s/webhook", settings.space_url)
+        try:
+            await cl.post(
+                f"https://api.telegram.org/bot{telegram_token}/setWebhook",
+                json={
+                    "url": f"https://{settings.space_url}/webhook",
+                    "secret_token": webhook_secret,
+                },
+                timeout=30,
+            )
+            logger.info("Webhook registered: https://%s/webhook", settings.space_url)
+        except Exception as e:
+            logger.error("Webhook registration failed (non-critical): %s", e)
+            logger.info("Bot will start anyway - register webhook later or use polling fallback")
 
     yield
 
