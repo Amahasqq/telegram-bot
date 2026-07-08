@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable
+from datetime import date
 
 from app.config import settings
 from app.constants import (
@@ -41,7 +42,7 @@ BRIEFING_SYSTEM = (
     "и без ссылок/URL в теле ответа — источники добавит бот отдельно."
 )
 
-BRIEFING_PROMPT = """Составь дайджест новостей об ИИ и технологиях на русском языке.
+BRIEFING_PROMPT = """Составь дайджест новостей об ИИ и технологиях на русском языке. Пиши структурированно и легко сканируемо.
 
 Hacker News: {hn_data}
 Lobsters: {lobsters_data}
@@ -50,14 +51,24 @@ Reddit: {reddit_data}
 Трендовые репозитории GitHub: {github_data}
 Новости (веб-поиск): {news_data}
 
-Структура ответа:
-1. **Главное**: 2-3 предложения о самой важной новости дня.
-2. **Обсуждают** (Hacker News, Lobsters, Reddit): ключевые дискуссии сообщества.
-3. **Исследования** (HF Papers): 2-3 заметные статьи.
-4. **Проекты** (GitHub): трендовые репозитории.
-5. **Интересное**: другие материалы из новостей.
+Структура ответа (используй эмодзи-заголовки и короткие разделители, БЕЗ Markdown-разметки):
 
-Пропускай пустые разделы. Пиши простым текстом, БЕЗ Markdown-разметки и БЕЗ ссылок — источники бот добавит сам."""
+🔥 Главное
+2-3 предложения о самой важной новости дня.
+
+💬 Обсуждают (Hacker News, Lobsters, Reddit)
+Ключевые дискуссии сообщества, по 1-2 строки на тему.
+
+🔬 Исследования (HF Papers)
+2-3 заметные статьи.
+
+🛠 Проекты (GitHub)
+Трендовые репозитории.
+
+✨ Интересное
+Другие материалы из новостей.
+
+Пропускай пустые разделы. Держи каждый раздел коротким (2-4 строки), общий объём — не более ~3500 символов, чтобы всё поместилось в одно сообщение. Пиши простым текстом, БЕЗ Markdown-разметки и БЕЗ ссылок — источники бот добавит сам."""
 
 _SOURCE_ORDER = ["hn", "reddit", "lobsters", "papers", "github", "news"]
 
@@ -205,7 +216,7 @@ async def generate_briefing(chat_id: int) -> dict[str, object]:
         logger.error("Briefing generation error: %s", e)
         return tg_resp("sendMessage", chat_id, text="Не удалось сформировать брифинг. Попробуйте позже.")
 
-    prefix = "📡 Ежедневный брифинг\n\n"
+    prefix = f"📡 Ежедневный брифинг — {date.today():%d.%m.%Y}\n\n"
     sources_block = _build_sources(data)
 
     budget = TELEGRAM_MAX_MSG - len(prefix) - len(sources_block) - 2
