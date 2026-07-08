@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
-from app.constants import AI_TEMP_UNAVAILABLE, RATE_LIMIT, WEBHOOK_TIMEOUT
+from app.constants import AI_TEMP_UNAVAILABLE, PRIVATE_BOT_MESSAGE, RATE_LIMIT, WEBHOOK_TIMEOUT
 from app.exceptions import AppError, ExternalAPIError
 from app.logging_config import setup_logging
 from app.middleware.auth import verify_webhook_secret
@@ -102,7 +102,7 @@ async def webhook(request: Request) -> dict[str, object]:
 
         if settings.allowed_user_id is not None and user_id != settings.allowed_user_id:
             logger.info("Ignoring update from non-allowed user %s", user_id)
-            return {}
+            return {"method": "sendMessage", "chat_id": chat_id, "text": PRIVATE_BOT_MESSAGE}
 
         if is_rate_limited(user_id):
             return {"method": "sendMessage", "chat_id": chat_id, "text": "Please slow down. I need a moment between messages."}

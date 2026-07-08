@@ -99,8 +99,8 @@ Telegram → POST /webhook
   «📡 …» и `disable_web_page_preview`, ссылки — голые URL (бот не использует
   `parse_mode`, поэтому битый Markdown тишину не вызывает; голые URL — защита на будущее).
 - **Факты:** `extract_facts` только при `len(text) >= FACT_MIN_LEN` (экономия квоты).
-- **Приватный режим:** `ALLOWED_USER_ID` задан → чужие апдейты молча игнорируются
-  (`return {}`).
+- **Приватный режим:** `ALLOWED_USER_ID` задан → чужим отвечает «Access denied.» на
+  каждое сообщение, `handle_text` не вызывается.
 
 ## 9. Запуск и проверки (venv-only)
 
@@ -138,7 +138,7 @@ REDDIT_CLIENT_ID=xxxxxxxxxxxx
 REDDIT_CLIENT_SECRET=xxxxxxxxxxxx
 
 # Optional: ограничить бота одним пользователем Telegram.
-# Пусто = открыт для всех. Чужие апдейты молча игнорируются.
+# Пусто = открыт для всех. Чужим отвечает «Access denied.».
 ALLOWED_USER_ID=123456789
 ```
 

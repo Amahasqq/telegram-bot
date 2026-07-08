@@ -20,6 +20,8 @@ AI_TEMP_UNAVAILABLE = (
     "Please try again in a minute."
 )
 
+PRIVATE_BOT_MESSAGE = "Access denied."
+
 MODEL_CHAIN = [
     "openrouter/free",
 ]

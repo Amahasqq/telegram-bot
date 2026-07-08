@@ -61,7 +61,7 @@ async def test_webhook_invalid_secret(mock_memory):
 
 
 @pytest.mark.asyncio
-async def test_private_mode_ignores_other_users(mock_memory):
+async def test_private_mode_rejects_other_users(mock_memory):
     settings.allowed_user_id = 999
     _user_last_msg.clear()
     try:
@@ -75,7 +75,10 @@ async def test_private_mode_ignores_other_users(mock_memory):
                 )
 
                 assert response.status_code == 200
-                assert response.json() == {}
+                data = response.json()
+                assert data["method"] == "sendMessage"
+                assert data["chat_id"] == 123
+                assert data["text"] == "Access denied."
                 mock_handle.assert_not_called()
     finally:
         settings.allowed_user_id = None

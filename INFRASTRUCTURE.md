@@ -195,7 +195,7 @@ Expected: `{"url": ".../webhook", "pending_update_count": 0, "last_error_date": 
 ### Private Mode (allow-list)
 
 - Controlled by the optional `ALLOWED_USER_ID` env var (Telegram user id).
-- When set, any update from a different `user_id` is **silently ignored** (`return {}`, no reply) so the bot's existence is not revealed to strangers.
+- When set, any update from a different `user_id` is rejected with a `sendMessage` reply «Access denied.» on every message (the AI handler is never invoked). Note: replying reveals the bot is alive — this is intentional.
 - When empty/`None`, the bot is open to everyone (default, used in tests and local dev).
 - The check lives in `webhook()` (after parsing the update), not in the webhook-secret middleware: the middleware only verifies the request came from Telegram, not *who* sent the message.
 
