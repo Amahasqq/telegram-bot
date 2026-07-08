@@ -60,7 +60,7 @@ telegram-bot/
 │   │   └── briefing.py           # generate_briefing with asyncio.gather
 │   ├── services/
 │   │   ├── memory.py             # MemoryManager (HF Datasets persistence)
-│   │   ├── llm.py                # OpenRouter with 3-model fallback chain
+│   │   ├── llm.py                # OpenRouter with single-model chain (openrouter/free auto-router)
 │   │   ├── search.py             # Tavily search (API key in Authorization header)
 │   │   ├── trends.py             # HN + Reddit + HF Papers + Lobsters + GitHub (parallel fetch)
 │   │   └── http_client.py        # Shared httpx.AsyncClient with connection pooling
@@ -103,7 +103,7 @@ Telegram → POST /webhook → verify_webhook (hmac.compare_digest)
   → set_user_chat_id() → handle_text()
   → memory.get_history() + memory.get_user_facts()
   → build_system_prompt() → build_messages()
-  → call_openrouter() (3-model fallback chain with retry)
+  → call_openrouter() (single-model chain with retry)
   → memory.add_message()
   → asyncio.create_task(extract_facts) [background, gated by FACT_MIN_LEN]
   → return {"method": "sendMessage", "chat_id": ..., "text": "..."}
@@ -159,15 +159,13 @@ Image and voice handling was removed because HF Spaces blocks `api.telegram.org`
 | Lobsters (`lobste.rs`) | None | unlimited | ✅ Working |
 | GitHub Search API | None | 60 req/hr (unauthenticated) | ✅ Working |
 
-### Model Fallback Chain
+### Model Chain
 ```python
 MODEL_CHAIN = [
-    "google/gemma-4-31b-it:free",
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
     "openrouter/free",
 ]
 ```
-Each model is retried 3 times with exponential backoff (2^attempt sec).
+The single model is retried 3 times with exponential backoff (2^attempt sec) before giving up.
 
 ---
 
@@ -283,3 +281,4 @@ pytest --cov=app --cov-report=term
 | Telegram | @BotFather | Bot token |
 | OpenRouter | — | API key |
 | Tavily | — | API key (optional) |
+

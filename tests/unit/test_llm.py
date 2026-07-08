@@ -43,18 +43,17 @@ async def test_call_openrouter_first_model_success():
 
 
 @pytest.mark.asyncio
-async def test_call_openrouter_fallback():
+async def test_call_openrouter_retries_then_succeeds():
     with patch("app.services.llm._call_model") as mock_call:
         mock_call.side_effect = [
-            httpx.HTTPStatusError("Model 1 failed", request=None, response=MagicMock(status_code=429)),
-            httpx.HTTPStatusError("Model 2 failed", request=None, response=MagicMock(status_code=429)),
-            ("Fallback response", {"prompt_tokens": 1, "completion_tokens": 2}),
+            httpx.HTTPStatusError("transient 500", request=None, response=MagicMock(status_code=500)),
+            ("Retry response", {"prompt_tokens": 1, "completion_tokens": 2}),
         ]
 
-        content, usage = await call_openrouter([{"role": "user", "content": "hi"}], "api_key")
+        content, _ = await call_openrouter([{"role": "user", "content": "hi"}], "api_key")
 
-        assert content == "Fallback response"
-        assert mock_call.call_count == 3
+        assert content == "Retry response"
+        assert mock_call.call_count == 2
 
 
 @pytest.mark.asyncio

@@ -15,8 +15,6 @@ TELEGRAM_MAX_MSG = 4096
 FACT_MIN_LEN = 20
 
 MODEL_CHAIN = [
-    "google/gemma-4-31b-it:free",
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
     "openrouter/free",
 ]
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
