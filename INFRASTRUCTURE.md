@@ -25,7 +25,7 @@ The bot uses the **Webhook Response Pattern**: handler returns `dict` with `meth
 
 ---
 
-## 3. Secrets (HF Space — 7 variables)
+## 3. Secrets (HF Space)
 
 | Secret | Required | Description |
 |--------|:-------:|-------------|
@@ -38,6 +38,7 @@ The bot uses the **Webhook Response Pattern**: handler returns `dict` with `meth
 | `TAVILY_API_KEY` | no | Web search (1000 req/month) |
 | `REDDIT_CLIENT_ID` | no | Reddit trends OAuth (script app) |
 | `REDDIT_CLIENT_SECRET` | no | Reddit trends OAuth (script app) |
+| `ALLOWED_USER_ID` | no | Telegram user id of the single allowed user (empty = open to everyone) |
 
 ---
 
@@ -49,19 +50,19 @@ telegram-bot/
 │   ├── main.py                   # FastAPI app, lifespan, webhook routes
 │   ├── config.py                 # Pydantic Settings (SecretStr)
 │   ├── constants.py              # All magic values, prompts, limits
-│   ├── exceptions.py             # Custom exceptions (5 types)
+│   ├── exceptions.py             # Custom exceptions (2 types)
 │   ├── logging_config.py         # Structured JSON logging
 │   ├── middleware/
 │   │   └── auth.py               # hmac.compare_digest webhook verification
 │   ├── handlers/
-│   │   ├── commands.py           # /start, /clear, /notes, /clearnotes, /costs, /briefing
+│   │   ├── commands.py           # /start, /clear, /note, /notes, /clearnotes, /briefing
 │   │   ├── messages.py           # handle_text (text only, no image/voice)
 │   │   └── briefing.py           # generate_briefing with asyncio.gather
 │   ├── services/
 │   │   ├── memory.py             # MemoryManager (HF Datasets persistence)
 │   │   ├── llm.py                # OpenRouter with 3-model fallback chain
 │   │   ├── search.py             # Tavily search (API key in Authorization header)
-│   │   ├── trends.py             # HN + Reddit (parallel fetch)
+│   │   ├── trends.py             # HN + Reddit + HF Papers + Lobsters + GitHub (parallel fetch)
 │   │   └── http_client.py        # Shared httpx.AsyncClient with connection pooling
 │   ├── schemas/
 │   │   └── telegram.py           # Pydantic: TelegramUpdate, Message, User, Chat
@@ -73,12 +74,13 @@ telegram-bot/
 ├── tests/
 │   ├── conftest.py               # Fixtures (mock HF API, mock httpx)
 │   ├── unit/
-│   │   ├── test_memory.py        # MemoryManager: 17 tests
-│   │   ├── test_llm.py           # OpenRouter + fact extraction: 9 tests
-│   │   ├── test_rate_limit.py    # Rate limiting: 4 tests
-│   │   └── test_commands.py      # Command handlers: 8 tests
+│   │   ├── test_memory.py        # MemoryManager
+│   │   ├── test_llm.py           # OpenRouter + fact extraction
+│   │   ├── test_rate_limit.py    # Rate limiting (real code)
+│   │   ├── test_commands.py      # Command handlers
+│   │   └── test_messages.py      # handle_text (search, truncation, facts gating)
 │   └── integration/
-│       └── test_webhook.py       # Webhook flow tests (requires FastAPI)
+│       └── test_webhook.py       # Webhook flow + private-mode tests
 ├── Dockerfile                    # Multi-stage, python:3.11-slim, non-root, healthcheck
 ├── requirements.txt              # 6 dependencies (fastapi, uvicorn, httpx, huggingface-hub, pydantic, pydantic-settings)
 ├── .env.example                  # Documented env vars
@@ -102,8 +104,8 @@ Telegram → POST /webhook → verify_webhook (hmac.compare_digest)
   → memory.get_history() + memory.get_user_facts()
   → build_system_prompt() → build_messages()
   → call_openrouter() (3-model fallback chain with retry)
-  → memory.add_message() + log_costs()
-  → asyncio.create_task(extract_facts) [background]
+  → memory.add_message()
+  → asyncio.create_task(extract_facts) [background, gated by FACT_MIN_LEN]
   → return {"method": "sendMessage", "chat_id": ..., "text": "..."}
 ```
 
@@ -113,10 +115,13 @@ Telegram → POST /webhook → verify_webhook (hmac.compare_digest)
 generate_briefing() → asyncio.gather(
     get_hackernews_trends(),      # HN Firebase API
     get_reddit_trends(),           # Parallel subreddit fetch
+    get_hf_papers(),               # HF Daily Papers
+    get_lobsters(),                # Lobsters (AI tag)
+    get_github_trending(),         # GitHub trending
     search_web("AI tech news")    # Tavily (optional)
   ) → BRIEFING_PROMPT.format()
   → call_openrouter()
-  → return tg_resp("sendMessage", ...)
+  → return tg_resp("sendMessage", ..., disable_web_page_preview=True)
 ```
 
 ### Image / Voice (REMOVED)
@@ -127,7 +132,7 @@ Image and voice handling was removed because HF Spaces blocks `api.telegram.org`
 
 ## 6. MemoryManager — Persistence
 
-- **Schema keys**: `conversations`, `user_facts`, `notes`, `costs`, `rate_limits`, `processed_updates`, `user_chat_ids`
+- **Schema keys**: `conversations`, `user_facts`, `notes`, `processed_updates`, `user_chat_ids`
 - **File**: `bot_data.json` in HF Dataset `ShnekAI/telegram-bot-data`
 - **Max history**: 20 messages per user (FIFO), truncated to 2000 chars each
 - **Sync**: Every 30 seconds (background task), force-save on shutdown (with 10s timeout)
@@ -150,13 +155,16 @@ Image and voice handling was removed because HF Spaces blocks `api.telegram.org`
 | Tavily | `Authorization: Bearer` | 1000 req/month | ✅ Working |
 | Hacker News Firebase API | None | unlimited | ✅ Working |
 | Reddit (`oauth.reddit.com`) | OAuth app-only (client_credentials) | 100 QPM | ✅ Working (needs `REDDIT_CLIENT_ID/SECRET`) |
+| Hugging Face Daily Papers | None | unlimited | ✅ Working |
+| Lobsters (`lobste.rs`) | None | unlimited | ✅ Working |
+| GitHub Search API | None | 60 req/hr (unauthenticated) | ✅ Working |
 
 ### Model Fallback Chain
 ```python
 MODEL_CHAIN = [
     "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "qwen/qwen3-coder:free",
+    "openrouter/free",
 ]
 ```
 Each model is retried 3 times with exponential backoff (2^attempt sec).
@@ -184,8 +192,14 @@ Expected: `{"url": ".../webhook", "pending_update_count": 0, "last_error_date": 
 
 - **Per user**: 1.5 second cooldown between messages
 - **Mechanism**: In-memory dict (`_user_last_msg`)
-- **Persistent fallback**: `rate_limits` key in HF Dataset (30s batch sync)
 - **On restart**: Rate limits reset (acceptable for private bot)
+
+### Private Mode (allow-list)
+
+- Controlled by the optional `ALLOWED_USER_ID` env var (Telegram user id).
+- When set, any update from a different `user_id` is **silently ignored** (`return {}`, no reply) so the bot's existence is not revealed to strangers.
+- When empty/`None`, the bot is open to everyone (default, used in tests and local dev).
+- The check lives in `webhook()` (after parsing the update), not in the webhook-secret middleware: the middleware only verifies the request came from Telegram, not *who* sent the message.
 
 ---
 
@@ -209,8 +223,7 @@ Expected: `{"url": ".../webhook", "pending_update_count": 0, "last_error_date": 
 - `/note <text>` — Save a note
 - `/notes` — Last 10 notes
 - `/clearnotes` — Delete all notes
-- `/costs` — Token usage and estimated cost
-- `/briefing` — AI/tech briefing (HN + Reddit + Tavily → OpenRouter)
+- `/briefing` — AI/tech briefing (HN + Reddit + HF Papers + Lobsters + GitHub + Tavily → OpenRouter)
 
 ### Technical URLs
 - `https://ShnekAI-telegram-bot.hf.space/health` — Health check
@@ -228,6 +241,7 @@ Expected: `{"url": ".../webhook", "pending_update_count": 0, "last_error_date": 
 6. **Max 20 messages** history per user
 7. **OpenRouter free models may be unstable** — Possible `null` responses (handled as `""`)
 8. **No outbound Telegram API** — Cannot send proactive messages
+9. **Python version parity** — Prod runs Python 3.11 (Dockerfile); local dev environment may be newer. `requirements-dev.txt` is pinned for reproducible dev.
 
 ---
 
@@ -249,13 +263,13 @@ Restart: button **⋮ → Restart Space**
 
 ```bash
 pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov
+pip install -r requirements-dev.txt
 
-# Run unit tests (38 tests)
-pytest tests/unit -v
+# Run all tests (55 tests: unit + integration)
+pytest -q
 
 # Run with coverage
-pytest tests/unit --cov=app --cov-report=term
+pytest --cov=app --cov-report=term
 ```
 
 ---

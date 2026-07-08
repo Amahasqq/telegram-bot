@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.main import app
+from app.config import settings
+from app.main import app, _user_last_msg
 
 
 def _client() -> AsyncClient:
@@ -18,7 +19,6 @@ def mock_memory():
         mock.get_user_history = AsyncMock(return_value=[])
         mock.get_user_facts = AsyncMock(return_value=[])
         mock.add_message = AsyncMock()
-        mock.log_costs = AsyncMock()
         mock.data = {"conversations": {}}
         yield mock
 
@@ -61,13 +61,47 @@ async def test_webhook_invalid_secret(mock_memory):
 
 
 @pytest.mark.asyncio
-async def test_webhook_empty_body(mock_memory):
-    with patch("app.main.verify_webhook_secret", AsyncMock(return_value=True)):
-        async with _client() as client:
-            response = await client.post("/webhook", json={}, headers={"X-Telegram-Bot-Api-Secret-Token": "test"})
+async def test_private_mode_ignores_other_users(mock_memory):
+    settings.allowed_user_id = 999
+    _user_last_msg.clear()
+    try:
+        with patch("app.main.handle_text") as mock_handle, \
+             patch("app.main.verify_webhook_secret", AsyncMock(return_value=True)):
+            async with _client() as client:
+                response = await client.post(
+                    "/webhook",
+                    json=_valid_update(chat_id=123, user_id=456, text="hello"),
+                    headers={"X-Telegram-Bot-Api-Secret-Token": "test"},
+                )
 
-            assert response.status_code == 200
-            assert response.json() == {}
+                assert response.status_code == 200
+                assert response.json() == {}
+                mock_handle.assert_not_called()
+    finally:
+        settings.allowed_user_id = None
+
+
+@pytest.mark.asyncio
+async def test_private_mode_allows_allowed_user(mock_memory):
+    settings.allowed_user_id = 456
+    _user_last_msg.clear()
+    try:
+        with patch("app.main.handle_text") as mock_handle, \
+             patch("app.main.verify_webhook_secret", AsyncMock(return_value=True)):
+            mock_handle.return_value = {"method": "sendMessage", "chat_id": 123, "text": "AI response"}
+            async with _client() as client:
+                response = await client.post(
+                    "/webhook",
+                    json=_valid_update(chat_id=123, user_id=456, text="hello"),
+                    headers={"X-Telegram-Bot-Api-Secret-Token": "test"},
+                )
+
+                assert response.status_code == 200
+                assert response.json()["text"] == "AI response"
+                mock_handle.assert_awaited_once()
+    finally:
+        settings.allowed_user_id = None
+
 
 
 @pytest.mark.asyncio

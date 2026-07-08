@@ -96,26 +96,6 @@ async def test_clearnotes_command():
 
 
 @pytest.mark.asyncio
-async def test_costs_command():
-    with patch("app.handlers.commands.memory") as mock_memory:
-        mock_memory.get_costs = AsyncMock(return_value={
-            "total_input_tokens": 1000,
-            "total_output_tokens": 500,
-            "daily_input_tokens": 100,
-            "daily_output_tokens": 50,
-            "daily_date": "2024-01-01",
-        })
-
-        result = await handle_command(123, 1, "/costs")
-
-        assert result["method"] == "sendMessage"
-        text = str(result["text"])
-        assert "Cost stats" in text
-        assert "1000" in text
-        assert "500" in text
-
-
-@pytest.mark.asyncio
 async def test_unknown_command():
     with patch("app.handlers.commands.memory") as mock_memory:
         mock_memory.clear_history = AsyncMock()
@@ -128,19 +108,17 @@ async def test_unknown_command():
 
 @pytest.mark.asyncio
 async def test_briefing_command():
-    with patch("app.handlers.briefing.memory") as mock_memory:
-        mock_memory.log_costs = AsyncMock()
-        with patch("app.handlers.briefing.call_openrouter") as mock_or:
-            mock_or.return_value = ("Test briefing content", {"prompt_tokens": 10, "completion_tokens": 20})
-            with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[])), \
-                 patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
-                 patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-                 patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-                 patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
-                with patch("app.handlers.briefing.settings") as mock_settings:
-                    mock_settings.tavily_api_key = None
+    with patch("app.handlers.briefing.call_openrouter") as mock_or:
+        mock_or.return_value = ("Test briefing content", {"prompt_tokens": 10, "completion_tokens": 20})
+        with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[])), \
+             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
+             patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
+             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+            with patch("app.handlers.briefing.settings") as mock_settings:
+                mock_settings.tavily_api_key = None
 
-                    result = await generate_briefing(123)
+                result = await generate_briefing(123)
 
-                    assert result["method"] == "sendMessage"
-                    assert "брифинг" in str(result["text"]).lower()
+                assert result["method"] == "sendMessage"
+                assert "брифинг" in str(result["text"]).lower()

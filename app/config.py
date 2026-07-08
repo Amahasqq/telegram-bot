@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     tavily_api_key: SecretStr | None = None
     reddit_client_id: SecretStr | None = None
     reddit_client_secret: SecretStr | None = None
+    allowed_user_id: int | None = None
     hf_token: SecretStr
     dataset_repo: str
     space_url: str

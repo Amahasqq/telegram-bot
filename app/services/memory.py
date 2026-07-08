@@ -22,14 +22,6 @@ DATA_FILENAME = "bot_data.json"
 LOCAL_DATA_PATH = "/tmp/bot_data.json"
 REPO_TYPE = "dataset"
 
-DEFAULT_COSTS: dict[str, Any] = {
-    "total_input_tokens": 0,
-    "total_output_tokens": 0,
-    "daily_date": "",
-    "daily_input_tokens": 0,
-    "daily_output_tokens": 0,
-}
-
 
 class MemoryManager:
     """Persists bot state to a Hugging Face Dataset with periodic background sync."""
@@ -76,7 +68,6 @@ class MemoryManager:
         self.data = {
             "conversations": raw.get("conversations", {}),
             "notes": raw.get("notes", []),
-            "costs": raw.get("costs", dict(DEFAULT_COSTS)),
             "user_facts": raw.get("user_facts", {}),
             "processed_updates": raw.get("processed_updates", []),
             "user_chat_ids": raw.get("user_chat_ids", {}),
@@ -215,24 +206,6 @@ class MemoryManager:
         async with self.lock:
             self.data["notes"] = []
             self.dirty = True
-
-    # Costs
-    async def log_costs(self, inp: int, out: int) -> None:
-        async with self.lock:
-            today = datetime.now().strftime("%Y-%m-%d")
-            costs = self.data.setdefault("costs", dict(DEFAULT_COSTS))
-            costs["total_input_tokens"] = costs.get("total_input_tokens", 0) + inp
-            costs["total_output_tokens"] = costs.get("total_output_tokens", 0) + out
-            if costs.get("daily_date") != today:
-                costs["daily_date"] = today
-                costs["daily_input_tokens"] = 0
-                costs["daily_output_tokens"] = 0
-            costs["daily_input_tokens"] = costs.get("daily_input_tokens", 0) + inp
-            costs["daily_output_tokens"] = costs.get("daily_output_tokens", 0) + out
-            self.dirty = True
-
-    async def get_costs(self) -> dict:
-        return self.data.get("costs", {})
 
 
 memory = MemoryManager(

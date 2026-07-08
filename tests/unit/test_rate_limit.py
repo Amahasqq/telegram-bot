@@ -1,18 +1,6 @@
-import time
-
 import pytest
 
-RATE_LIMIT = 1.5
-_user_last_msg: dict[int, float] = {}
-
-
-def is_rate_limited(user_id: int) -> bool:
-    now = time.time()
-    last = _user_last_msg.get(user_id, 0.0)
-    if now - last < RATE_LIMIT:
-        return True
-    _user_last_msg[user_id] = now
-    return False
+from app.main import is_rate_limited, _user_last_msg
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +22,7 @@ def test_over_limit_allows_after_window():
     global _user_last_msg
     assert is_rate_limited(1) is False
     assert is_rate_limited(1) is True
-    _user_last_msg[1] = time.time() - 2.0
+    _user_last_msg[1] = 0.0
     assert is_rate_limited(1) is False
 
 

@@ -12,11 +12,12 @@ from app.constants import (
     BRIEFING_LOBSTERS_CHARS,
     BRIEFING_PAPERS_CHARS,
     BRIEFING_GITHUB_CHARS,
+    TELEGRAM_MAX_MSG,
 )
 from app.exceptions import ExternalAPIError
-from app.services.memory import memory
 from app.services.llm import call_openrouter
 from app.services.search import search_web
+from app.utils.helpers import truncate
 from app.services.trends import (
     get_hackernews_trends,
     get_reddit_trends,
@@ -49,7 +50,7 @@ Reddit: {reddit_data}
 4. **Проекты** (GitHub): трендовые репозитории.
 5. **Интересное**: другие материалы из новостей.
 
-Пропускай пустые разделы. Для каждого материала добавляй ссылку из данных (поле url) в формате Markdown [заголовок](url).
+Пропускай пустые разделы. Для каждого материала добавляй обычный URL из поля url, который идёт рядом с заголовком (не используй Markdown-ссылки).
 Пиши живо и без воды."""
 
 
@@ -92,7 +93,7 @@ async def generate_briefing(chat_id: int) -> dict[str, object]:
     openrouter_key = settings.openrouter_api_key.get_secret_value()
 
     try:
-        answer, usage = await call_openrouter(
+        answer, _ = await call_openrouter(
             [
                 {"role": "system", "content": BRIEFING_SYSTEM},
                 {"role": "user", "content": prompt},
@@ -103,8 +104,8 @@ async def generate_briefing(chat_id: int) -> dict[str, object]:
         logger.error("Briefing generation error: %s", e)
         return tg_resp("sendMessage", chat_id, text="Не удалось сформировать брифинг. Попробуйте позже.")
 
-    briefing = f"📡 Ежедневный брифинг\n\n{answer}"
-    if usage:
-        await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+    prefix = "📡 Ежедневный брифинг\n\n"
+    answer = truncate(answer, TELEGRAM_MAX_MSG - len(prefix))
+    briefing = prefix + answer
     logger.info("Briefing generated")
-    return tg_resp("sendMessage", chat_id, text=briefing)
+    return tg_resp("sendMessage", chat_id, text=briefing, disable_web_page_preview=True)

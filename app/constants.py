@@ -11,10 +11,13 @@ TAVILY_QUERY_LENGTH = 500
 MAX_PROCESSED_UPDATES = 1000
 PROCESSED_UPDATES_TTL_HOURS = 24
 
+TELEGRAM_MAX_MSG = 4096
+FACT_MIN_LEN = 20
+
 MODEL_CHAIN = [
     "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "qwen/qwen3-coder:free",
+    "openrouter/free",
 ]
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_TIMEOUT = 30
@@ -24,6 +27,9 @@ SEARCH_KEYWORDS = {
     "news", "latest", "what", "search",
     "find", "google", "trending", "weather", "stock",
     "price", "how", "who", "what's",
+    "новости", "последние", "что", "поиск", "найди", "гугл",
+    "тренды", "погода", "курс", "цена", "как", "кто",
+    "сколько", "где", "когда",
 }
 
 TAVILY_TIMEOUT = 10

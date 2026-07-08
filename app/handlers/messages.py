@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import os
+import re
 
 from app.config import settings
-from app.constants import SEARCH_KEYWORDS
+from app.constants import FACT_MIN_LEN, SEARCH_KEYWORDS, TELEGRAM_MAX_MSG
 from app.exceptions import ExternalAPIError
 from app.services.memory import memory
 from app.services.llm import call_openrouter, extract_facts
@@ -37,7 +38,7 @@ async def handle_text(chat_id: int, user_id: int, text: str) -> dict[str, object
     except Exception:
         pass
 
-    words = set(text.lower().split())
+    words = set(re.findall(r"\w+", text.lower()))
     needs_search = bool(SEARCH_KEYWORDS & words)
 
     if needs_search:
@@ -54,19 +55,20 @@ async def handle_text(chat_id: int, user_id: int, text: str) -> dict[str, object
     openrouter_key = settings.openrouter_api_key.get_secret_value()
 
     try:
-        answer, usage = await call_openrouter(messages, openrouter_key)
+        answer, _ = await call_openrouter(messages, openrouter_key)
     except ExternalAPIError as e:
         logger.error("OpenRouter error for user %s: %s", user_id, e)
         return tg_resp("sendMessage", chat_id, text="I'm having trouble connecting to the AI. Please try again later.")
 
+    answer = truncate(answer, TELEGRAM_MAX_MSG)
+
     try:
         await memory.add_message(str(user_id), "user", truncate(text))
         await memory.add_message(str(user_id), "assistant", answer)
-        if usage:
-            await memory.log_costs(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-        task = asyncio.create_task(_extract_and_save_facts(text, user_id, openrouter_key))
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        if len(text.strip()) >= FACT_MIN_LEN:
+            task = asyncio.create_task(_extract_and_save_facts(text, user_id, openrouter_key))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
     except Exception as e:
         logger.error("Memory error for user %s: %s", user_id, e)
 

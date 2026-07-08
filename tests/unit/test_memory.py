@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.memory import DEFAULT_COSTS, MemoryManager
+from app.services.memory import MemoryManager
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,6 @@ async def test_load_fresh_start(mock_hf_api):
         assert mm.data["user_facts"] == {}
         assert mm.data["processed_updates"] == []
         assert mm.data["user_chat_ids"] == {}
-        assert mm.data["costs"] == DEFAULT_COSTS
     finally:
         if mm:
             with patch.object(mm, "_save_now", new_callable=AsyncMock):
@@ -33,7 +32,6 @@ async def test_load_existing_data(mock_hf_api):
             "conversations": {"1": [{"role": "user", "content": "hi"}]},
             "notes": [{"text": "test", "timestamp": "2024-01-01"}],
             "user_facts": {"1": ["likes python"]},
-            "costs": {"total_input_tokens": 100, "total_output_tokens": 50, "daily_date": "2024-01-01", "daily_input_tokens": 10, "daily_output_tokens": 5},
         }
         mock_data = json.dumps(existing)
         mock_open = MagicMock()
@@ -46,7 +44,6 @@ async def test_load_existing_data(mock_hf_api):
         assert mm.data["conversations"]["1"][0]["content"] == "hi"
         assert mm.data["notes"][0]["text"] == "test"
         assert mm.data["user_facts"]["1"] == ["likes python"]
-        assert mm.data["costs"]["total_input_tokens"] == 100
         assert mm.data["processed_updates"] == []
         assert mm.data["user_chat_ids"] == {}
     finally:
@@ -128,27 +125,6 @@ async def test_clear_notes(memory_manager):
     await memory_manager.clear_notes()
     notes = await memory_manager.get_notes()
     assert notes == []
-
-
-@pytest.mark.asyncio
-async def test_log_and_get_costs(memory_manager):
-    await memory_manager.log_costs(100, 50)
-    costs = await memory_manager.get_costs()
-    assert costs["total_input_tokens"] == 100
-    assert costs["total_output_tokens"] == 50
-    assert costs["daily_input_tokens"] == 100
-    assert costs["daily_output_tokens"] == 50
-
-
-@pytest.mark.asyncio
-async def test_log_costs_incremental(memory_manager):
-    await memory_manager.log_costs(100, 50)
-    await memory_manager.log_costs(200, 100)
-    costs = await memory_manager.get_costs()
-    assert costs["total_input_tokens"] == 300
-    assert costs["total_output_tokens"] == 150
-    assert costs["daily_input_tokens"] == 300
-    assert costs["daily_output_tokens"] == 150
 
 
 @pytest.mark.asyncio

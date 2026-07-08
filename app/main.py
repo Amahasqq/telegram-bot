@@ -99,6 +99,10 @@ async def webhook(request: Request) -> dict[str, object]:
     if not chat_id or not user_id:
         return {}
 
+    if settings.allowed_user_id is not None and user_id != settings.allowed_user_id:
+        logger.info("Ignoring update from non-allowed user %s", user_id)
+        return {}
+
     if is_rate_limited(user_id):
         return {"method": "sendMessage", "chat_id": chat_id, "text": "Please slow down. I need a moment between messages."}
 
@@ -108,7 +112,14 @@ async def webhook(request: Request) -> dict[str, object]:
     entities = update.message.entities or []
 
     if entities and entities[0].get("type") == "bot_command":
-        return await handle_command(chat_id, user_id, text)
+        try:
+            return await handle_command(chat_id, user_id, text)
+        except ExternalAPIError as e:
+            logger.error("External API error for user %s: %s", user_id, e)
+            return {"method": "sendMessage", "chat_id": chat_id, "text": "I'm having trouble connecting. Please try again later."}
+        except Exception as e:
+            logger.error("Command error for user %s: %s", user_id, e)
+            return {"method": "sendMessage", "chat_id": chat_id, "text": "An error occurred. Please try again later."}
 
     try:
         return await handle_text(chat_id, user_id, text)
