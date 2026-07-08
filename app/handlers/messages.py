@@ -4,7 +4,7 @@ import os
 import re
 
 from app.config import settings
-from app.constants import FACT_MIN_LEN, SEARCH_KEYWORDS, TELEGRAM_MAX_MSG
+from app.constants import AI_TEMP_UNAVAILABLE, FACT_MIN_LEN, SEARCH_KEYWORDS, TELEGRAM_MAX_MSG
 from app.exceptions import ExternalAPIError
 from app.services.memory import memory
 from app.services.llm import call_openrouter, extract_facts
@@ -58,7 +58,7 @@ async def handle_text(chat_id: int, user_id: int, text: str) -> dict[str, object
         answer, _ = await call_openrouter(messages, openrouter_key)
     except ExternalAPIError as e:
         logger.error("OpenRouter error for user %s: %s", user_id, e)
-        return tg_resp("sendMessage", chat_id, text="I'm having trouble connecting to the AI. Please try again later.")
+        return tg_resp("sendMessage", chat_id, text=AI_TEMP_UNAVAILABLE)
 
     answer = truncate(answer, TELEGRAM_MAX_MSG)
 

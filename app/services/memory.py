@@ -14,6 +14,7 @@ from app.constants import (
     MAX_TEXT_LENGTH,
     MAX_PROCESSED_UPDATES,
     PROCESSED_UPDATES_TTL_HOURS,
+    USER_FACTS_MAX,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,9 +130,9 @@ class MemoryManager:
             except asyncio.CancelledError:
                 pass
         try:
-            await asyncio.wait_for(self.save(force=True), timeout=10.0)
+            await asyncio.wait_for(self.save(force=True), timeout=30.0)
         except Exception as e:
-            logger.error("Final save on shutdown failed: %s", e)
+            logger.error("Final save on shutdown failed (data may be lost): %s", e)
 
     # User chat_id mapping
     async def set_user_chat_id(self, user_id: str, chat_id: int) -> None:
@@ -160,7 +161,7 @@ class MemoryManager:
 
     # Conversations
     async def get_user_history(self, user_id: str) -> list[dict]:
-        return self.data.get("conversations", {}).get(user_id, [])
+        return list(self.data.get("conversations", {}).get(user_id, []))
 
     async def add_message(self, user_id: str, role: str, content: str) -> None:
         async with self.lock:
@@ -177,7 +178,7 @@ class MemoryManager:
 
     # User facts
     async def get_user_facts(self, user_id: str) -> list[str]:
-        return self.data.get("user_facts", {}).get(user_id, [])
+        return list(self.data.get("user_facts", {}).get(user_id, []))
 
     async def add_facts(self, user_id: str, facts: list[str]) -> None:
         if not facts:
@@ -189,6 +190,8 @@ class MemoryManager:
                 if fact.lower() not in existing:
                     stored.append(fact)
                     existing.add(fact.lower())
+            if len(stored) > USER_FACTS_MAX:
+                del stored[: len(stored) - USER_FACTS_MAX]
             self.dirty = True
 
     # Notes

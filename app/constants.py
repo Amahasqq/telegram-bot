@@ -13,6 +13,12 @@ PROCESSED_UPDATES_TTL_HOURS = 24
 
 TELEGRAM_MAX_MSG = 4096
 FACT_MIN_LEN = 20
+USER_FACTS_MAX = 50
+
+AI_TEMP_UNAVAILABLE = (
+    "AI is temporarily unavailable - the free model quota may be exhausted. "
+    "Please try again in a minute."
+)
 
 MODEL_CHAIN = [
     "openrouter/free",

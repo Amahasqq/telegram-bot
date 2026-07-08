@@ -69,8 +69,8 @@ async def _get_reddit_token(client: AsyncClient) -> str | None:
             )
             response.raise_for_status()
             payload = response.json()
-        except Exception as e:
-            logger.error("Reddit token error: %s", e)
+        except Exception:
+            logger.error("Reddit token request failed (check REDDIT_CLIENT_ID/SECRET)")
             return None
 
         _reddit_token = payload.get("access_token")

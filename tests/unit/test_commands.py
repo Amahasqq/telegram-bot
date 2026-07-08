@@ -122,3 +122,4 @@ async def test_briefing_command():
 
                 assert result["method"] == "sendMessage"
                 assert "брифинг" in str(result["text"]).lower()
+                assert "parse_mode" not in result

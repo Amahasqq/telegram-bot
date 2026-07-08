@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
-from app.constants import RATE_LIMIT, WEBHOOK_TIMEOUT
+from app.constants import AI_TEMP_UNAVAILABLE, RATE_LIMIT, WEBHOOK_TIMEOUT
 from app.exceptions import AppError, ExternalAPIError
 from app.logging_config import setup_logging
 from app.middleware.auth import verify_webhook_secret
@@ -87,26 +87,32 @@ async def webhook(request: Request) -> dict[str, object]:
         logger.error("Validation error: %s", e)
         return {}
 
-    if not await memory.claim_update(update.update_id):
+    try:
+        if not await memory.claim_update(update.update_id):
+            return {}
+
+        if not update.message:
+            return {}
+
+        chat_id = update.message.chat.id if update.message.chat else None
+        user_id = update.message.from_field.id if update.message.from_field else None
+
+        if not chat_id or not user_id:
+            return {}
+
+        if settings.allowed_user_id is not None and user_id != settings.allowed_user_id:
+            logger.info("Ignoring update from non-allowed user %s", user_id)
+            return {}
+
+        if is_rate_limited(user_id):
+            return {"method": "sendMessage", "chat_id": chat_id, "text": "Please slow down. I need a moment between messages."}
+
+        await memory.set_user_chat_id(str(user_id), chat_id)
+    except Exception as e:
+        logger.error("Pre-handler error for update %s: %s", update.update_id, e)
+        if chat_id and user_id:
+            return {"method": "sendMessage", "chat_id": chat_id, "text": "An error occurred. Please try again later."}
         return {}
-
-    if not update.message:
-        return {}
-
-    chat_id = update.message.chat.id if update.message.chat else None
-    user_id = update.message.from_field.id if update.message.from_field else None
-
-    if not chat_id or not user_id:
-        return {}
-
-    if settings.allowed_user_id is not None and user_id != settings.allowed_user_id:
-        logger.info("Ignoring update from non-allowed user %s", user_id)
-        return {}
-
-    if is_rate_limited(user_id):
-        return {"method": "sendMessage", "chat_id": chat_id, "text": "Please slow down. I need a moment between messages."}
-
-    await memory.set_user_chat_id(str(user_id), chat_id)
 
     text = update.message.text or ""
     entities = update.message.entities or []
@@ -116,7 +122,7 @@ async def webhook(request: Request) -> dict[str, object]:
             return await handle_command(chat_id, user_id, text)
         except ExternalAPIError as e:
             logger.error("External API error for user %s: %s", user_id, e)
-            return {"method": "sendMessage", "chat_id": chat_id, "text": "I'm having trouble connecting. Please try again later."}
+            return {"method": "sendMessage", "chat_id": chat_id, "text": AI_TEMP_UNAVAILABLE}
         except Exception as e:
             logger.error("Command error for user %s: %s", user_id, e)
             return {"method": "sendMessage", "chat_id": chat_id, "text": "An error occurred. Please try again later."}
