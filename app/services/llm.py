@@ -41,12 +41,13 @@ async def _call_model(model: str, messages: list, api_key: str) -> tuple[str, di
     }
 
 
-async def call_openrouter(messages: list, api_key: str) -> tuple[str, dict]:
-    if not MODEL_CHAIN:
+async def call_openrouter(messages: list, api_key: str, model: str | None = None) -> tuple[str, dict]:
+    chain = [model] if model else MODEL_CHAIN
+    if not chain:
         raise ValueError("MODEL_CHAIN is empty")
 
     last_error: Exception | None = None
-    for model in MODEL_CHAIN:
+    for model in chain:
         for attempt in range(OPENROUTER_RETRIES):
             try:
                 return await _call_model(model, messages, api_key)

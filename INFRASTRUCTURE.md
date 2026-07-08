@@ -112,17 +112,23 @@ Telegram → POST /webhook → verify_webhook (hmac.compare_digest)
 ### /briefing (working)
 
 ```
-generate_briefing() → asyncio.gather(
-    get_hackernews_trends(),      # HN Firebase API
-    get_reddit_trends(),           # Parallel subreddit fetch
-    get_hf_papers(),               # HF Daily Papers
-    get_lobsters(),                # Lobsters (AI tag)
-    get_github_trending(),         # GitHub trending
-    search_web("AI tech news")    # Tavily (optional)
-  ) → BRIEFING_PROMPT.format()
-  → call_openrouter()
-  → return tg_resp("sendMessage", ..., disable_web_page_preview=True)
+generate_briefing(chat_id, user_id=None)
+  → _gather_sources()  # cached BRIEFING_CACHE_TTL; asyncio.gather over:
+      get_hackernews_trends(), get_reddit_trends(), get_hf_papers(),
+      get_lobsters(), get_github_trending(),  # + search_web (Tavily, optional)
+  → _dedup() across sources by normalized title
+  → if no items: return BRIEFING_EMPTY_MSG (no LLM call)
+  → BRIEFING_PROMPT.format() (compact "- title (score) url" lines)
+  → call_openrouter(model=settings.briefing_model or BRIEFING_MODEL)
+  → build clickable "Источники" block from structured data: [title](url)
+  → return tg_resp("sendMessage", ..., parse_mode="Markdown",
+                   disable_web_page_preview=True)
 ```
+
+Links are built in code from the gathered source data (title+url), not by the
+LLM, so Markdown is always valid. `parse_mode` is used ONLY here; every other
+response stays parse_mode-free (a broken Markdown body under the Webhook
+Response Pattern would be silently dropped by Telegram).
 
 ### Image / Voice (REMOVED)
 
@@ -221,7 +227,7 @@ Expected: `{"url": ".../webhook", "pending_update_count": 0, "last_error_date": 
 - `/note <text>` — Save a note
 - `/notes` — Last 10 notes
 - `/clearnotes` — Delete all notes
-- `/briefing` — AI/tech briefing (HN + Reddit + HF Papers + Lobsters + GitHub + Tavily → OpenRouter)
+- `/briefing` — AI/tech briefing (HN + Reddit + HF Papers + Lobsters + GitHub + optional Tavily → OpenRouter; deduped, personalized, clickable source links)
 
 ### Technical URLs
 - `https://ShnekAI-telegram-bot.hf.space/health` — Health check

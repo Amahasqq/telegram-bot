@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     reddit_client_id: SecretStr | None = None
     reddit_client_secret: SecretStr | None = None
     allowed_user_id: int | None = None
+    briefing_model: str | None = None
     hf_token: SecretStr
     dataset_repo: str
     space_url: str

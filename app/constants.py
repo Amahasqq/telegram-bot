@@ -15,6 +15,12 @@ TELEGRAM_MAX_MSG = 4096
 FACT_MIN_LEN = 20
 USER_FACTS_MAX = 50
 
+BRIEFING_PARSE_MODE = "Markdown"
+BRIEFING_MAX_SOURCES = 12
+BRIEFING_CACHE_TTL = 1800
+BRIEFING_MODEL: str | None = None
+BRIEFING_EMPTY_MSG = "Не удалось собрать свежие новости. Попробуйте позже."
+
 AI_TEMP_UNAVAILABLE = (
     "AI is temporarily unavailable - the free model quota may be exhausted. "
     "Please try again in a minute."

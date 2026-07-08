@@ -25,4 +25,10 @@ def build_messages(
 
 
 def truncate(text: str, max_len: int = MAX_TEXT_LENGTH) -> str:
-    return text[:max_len]
+    if len(text) <= max_len:
+        return text
+    cut = text[: max_len - 1]
+    boundary = cut.rfind(" ")
+    if boundary > 0:
+        cut = cut[:boundary]
+    return cut.rstrip() + "…"

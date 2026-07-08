@@ -23,6 +23,17 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _reset_briefing_cache():
+    from app.handlers import briefing
+
+    briefing._cache = None
+    briefing._cache_ts = 0.0
+    yield
+    briefing._cache = None
+    briefing._cache_ts = 0.0
+
+
 @pytest.fixture
 def mock_hf_api():
     api = MagicMock()
