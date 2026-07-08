@@ -120,10 +120,14 @@ def _fmt_compact(data: dict[str, list], key: str, limit: int) -> str:
     return "\n".join(lines)[:limit]
 
 
-def _build_sources(data: dict[str, list], max_items: int = BRIEFING_MAX_SOURCES) -> str:
+def _build_sources(
+    data: dict[str, list],
+    per_source: int = 3,
+    max_total: int = BRIEFING_MAX_SOURCES,
+) -> str:
     lines: list[str] = []
     for key in _SOURCE_ORDER:
-        for item in data.get(key, []):
+        for item in data.get(key, [])[:per_source]:
             title = (item.get("title", "") or "").strip()
             url = (item.get("url", "") or "").strip()
             if not title:
@@ -132,7 +136,7 @@ def _build_sources(data: dict[str, list], max_items: int = BRIEFING_MAX_SOURCES)
                 lines.append(f"- [{_md_escape(title)}]({url})")
             else:
                 lines.append(f"- {_md_escape(title)}")
-            if len(lines) >= max_items:
+            if len(lines) >= max_total:
                 return "\n".join(lines)
     return "\n".join(lines)
 
