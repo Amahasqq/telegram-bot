@@ -63,12 +63,38 @@ LOBSTERS_RESULTS = 8
 
 HTTP_USER_AGENT = "telegram-ai-bot"
 
-# Briefing: how many items of each source to feed the model, and how many
-# characters of each serialized source block to keep in the prompt.
-BRIEFING_NEWS_COUNT = 5
+# HN Algolia search — AI-scoped Hacker News feed (free, no key)
+HN_ALGOLIA_URL = "https://hn.algolia.com/api/v1/search"
+HN_ALGOLIA_TIMEOUT = 15
+HN_ALGOLIA_RESULTS = 10
+HN_ALGOLIA_QUERY = "AI OR LLM OR machine learning"
+
+# arXiv — primary AI research papers (free, no key, Atom XML)
+ARXIV_URL = "http://export.arxiv.org/api/query"
+ARXIV_TIMEOUT = 15
+ARXIV_RESULTS = 8
+ARXIV_CATS = "cat:cs.AI OR cat:cs.CL OR cat:cs.LG OR cat:cs.CV"
+
+# Dev.to — developer articles by tag (free, no key)
+DEVTO_URL = "https://dev.to/api/articles"
+DEVTO_TIMEOUT = 10
+DEVTO_RESULTS = 8
+DEVTO_TAG = "ai"
+
+# Google News — RSS search, no-key news fallback (free, no key)
+GOOGLE_NEWS_URL = "https://news.google.com/rss/search"
+GOOGLE_NEWS_TIMEOUT = 10
+GOOGLE_NEWS_RESULTS = 8
+GOOGLE_NEWS_QUERY = "artificial intelligence OR LLM OR machine learning"
+
+# Briefing: how many characters of each source block to keep in the prompt feed.
 BRIEFING_HN_CHARS = 2000
+BRIEFING_HN_AI_CHARS = 1500
 BRIEFING_NEWS_CHARS = 1500
 BRIEFING_LOBSTERS_CHARS = 1500
 BRIEFING_PAPERS_CHARS = 1500
+BRIEFING_ARXIV_CHARS = 1500
+BRIEFING_DEVTO_CHARS = 1500
+BRIEFING_DIGEST_MAX = 1800
 
 WEBHOOK_TIMEOUT = 30
