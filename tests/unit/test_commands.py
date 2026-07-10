@@ -111,10 +111,8 @@ async def test_briefing_command():
     with patch("app.handlers.briefing.call_openrouter") as mock_or:
         mock_or.return_value = ("Test briefing content", {"prompt_tokens": 10, "completion_tokens": 20})
         with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[{"title": "News", "url": "https://example.com"}])), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
              patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])):
             with patch("app.handlers.briefing.settings") as mock_settings:
                 mock_settings.tavily_api_key = None
                 mock_settings.openrouter_api_key = MagicMock()

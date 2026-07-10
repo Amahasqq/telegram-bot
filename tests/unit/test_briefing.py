@@ -34,10 +34,8 @@ async def test_briefing_dedup_across_sources():
     with patch("app.handlers.briefing.call_openrouter") as mock_or:
         mock_or.return_value = ("Текст", {"prompt_tokens": 1, "completion_tokens": 1})
         with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[item])), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[dict(item)])), \
              patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])):
             _settings()
             result = await briefing_module.generate_briefing(123)
 
@@ -50,10 +48,8 @@ async def test_briefing_dedup_across_sources():
 async def test_briefing_empty_result_no_llm():
     with patch("app.handlers.briefing.call_openrouter") as mock_or:
         with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
              patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])):
             _settings(tavily=None)
             result = await briefing_module.generate_briefing(123)
 
@@ -67,43 +63,23 @@ async def test_briefing_prompt_structure():
     with patch("app.handlers.briefing.call_openrouter") as mock_or:
         mock_or.return_value = ("Текст", {})
         with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[{"title": "X", "url": "https://x.com"}])), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
              patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])):
             _settings()
             await briefing_module.generate_briefing(123)
 
     prompt = mock_or.call_args.args[0][1]["content"]
-    for marker in ("🔥 Главное", "💬 Обсуждают", "🔬 Исследования", "🛠 Проекты", "✨ Интересное"):
+    for marker in ("🔥 Главное", "💬 Обсуждают", "🔬 Исследования", "✨ Интересное"):
         assert marker in prompt
     assert "3500" in prompt
-
-
-@pytest.mark.asyncio
-async def test_briefing_github_in_sources():
-    hn = [{"title": f"HN {i}", "url": f"https://news.ycombinator.com/item?id={i}"} for i in range(20)]
-    github = [{"title": "owner/cool-repo", "url": "https://github.com/owner/cool-repo", "stars": 100}]
-    with patch("app.handlers.briefing.call_openrouter", return_value=("Текст", {})):
-        with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=hn)), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=github)):
-            _settings()
-            result = await briefing_module.generate_briefing(123)
-
-    assert "[owner/cool-repo](https://github.com/owner/cool-repo)" in result["text"]
 
 
 @pytest.mark.asyncio
 async def test_briefing_external_api_error():
     with patch("app.handlers.briefing.call_openrouter", side_effect=ExternalAPIError("boom")):
         with patch("app.handlers.briefing.get_hackernews_trends", AsyncMock(return_value=[{"title": "X", "url": "https://x.com"}])), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
              patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])):
             _settings()
             result = await briefing_module.generate_briefing(123)
 
@@ -115,10 +91,8 @@ async def test_briefing_cache_reuses_sources():
     src = AsyncMock(return_value=[{"title": "Cached", "url": "https://c.com"}])
     with patch("app.handlers.briefing.call_openrouter", return_value=("Текст", {})):
         with patch("app.handlers.briefing.get_hackernews_trends", src), \
-             patch("app.handlers.briefing.get_reddit_trends", AsyncMock(return_value=[])), \
              patch("app.handlers.briefing.get_lobsters", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])), \
-             patch("app.handlers.briefing.get_github_trending", AsyncMock(return_value=[])):
+             patch("app.handlers.briefing.get_hf_papers", AsyncMock(return_value=[])):
             _settings()
             await briefing_module.generate_briefing(123)
             await briefing_module.generate_briefing(123)

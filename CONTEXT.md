@@ -102,7 +102,7 @@ env-заглушки и мокает huggingface_hub.
   (если TAVILY_API_KEY задан), результат попадает в промпт как `[Search results:]`.
 - **Обрезка**: все ответы ≤ TELEGRAM_MAX_MSG (4096): messages, briefing (с учётом
   префикса «📡 Ежедневный брифинг\n\n»), /notes.
-- **/briefing**: 6 источников (HN, Reddit, HF Papers, Lobsters, GitHub, Tavily —
+- **/briefing**: 4 источника (HN, Lobsters, HF Papers, Tavily —
   опционален), дедуп по заголовкам между источниками, кэш сырых источников
   (`BRIEFING_CACHE_TTL`), отдельная модель (`settings.briefing_model`), блок
   «Источники» с **кликабельными заголовками** `[title](url)`, собранными в коде

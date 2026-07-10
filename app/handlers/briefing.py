@@ -9,11 +9,9 @@ from app.config import settings
 from app.constants import (
     BRIEFING_NEWS_COUNT,
     BRIEFING_HN_CHARS,
-    BRIEFING_REDDIT_CHARS,
     BRIEFING_NEWS_CHARS,
     BRIEFING_LOBSTERS_CHARS,
     BRIEFING_PAPERS_CHARS,
-    BRIEFING_GITHUB_CHARS,
     BRIEFING_PARSE_MODE,
     BRIEFING_MAX_SOURCES,
     BRIEFING_CACHE_TTL,
@@ -27,10 +25,8 @@ from app.services.search import search_web
 from app.utils.helpers import truncate
 from app.services.trends import (
     get_hackernews_trends,
-    get_reddit_trends,
     get_hf_papers,
     get_lobsters,
-    get_github_trending,
 )
 from app.utils.telegram import tg_resp
 
@@ -46,9 +42,7 @@ BRIEFING_PROMPT = """Составь дайджест новостей об ИИ 
 
 Hacker News: {hn_data}
 Lobsters: {lobsters_data}
-Reddit: {reddit_data}
 Научные статьи (HF Daily Papers): {papers_data}
-Трендовые репозитории GitHub: {github_data}
 Новости (веб-поиск): {news_data}
 
 Структура ответа (используй эмодзи-заголовки и короткие разделители, БЕЗ Markdown-разметки):
@@ -56,21 +50,18 @@ Reddit: {reddit_data}
 🔥 Главное
 2-3 предложения о самой важной новости дня.
 
-💬 Обсуждают (Hacker News, Lobsters, Reddit)
+💬 Обсуждают (Hacker News, Lobsters)
 Ключевые дискуссии сообщества, по 1-2 строки на тему.
 
 🔬 Исследования (HF Papers)
 2-3 заметные статьи.
-
-🛠 Проекты (GitHub)
-Трендовые репозитории.
 
 ✨ Интересное
 Другие материалы из новостей.
 
 Пропускай пустые разделы. Держи каждый раздел коротким (2-4 строки), общий объём — не более ~3500 символов, чтобы всё поместилось в одно сообщение. Пиши простым текстом, БЕЗ Markdown-разметки и БЕЗ ссылок — источники бот добавит сам."""
 
-_SOURCE_ORDER = ["hn", "reddit", "lobsters", "papers", "github", "news"]
+_SOURCE_ORDER = ["hn", "lobsters", "papers", "news"]
 
 _cache: dict[str, list] | None = None
 _cache_ts: float = 0.0
@@ -160,9 +151,7 @@ async def _gather_sources(force: bool = False) -> dict[str, list]:
     sources: dict[str, Awaitable[list]] = {
         "hn": get_hackernews_trends(),
         "lobsters": get_lobsters(),
-        "reddit": get_reddit_trends(),
         "papers": get_hf_papers(),
-        "github": get_github_trending(),
     }
 
     tavily_key = settings.tavily_api_key.get_secret_value() if settings.tavily_api_key else None
@@ -194,9 +183,7 @@ async def generate_briefing(chat_id: int) -> dict[str, object]:
     prompt = BRIEFING_PROMPT.format(
         hn_data=_fmt_compact(data, "hn", BRIEFING_HN_CHARS),
         lobsters_data=_fmt_compact(data, "lobsters", BRIEFING_LOBSTERS_CHARS),
-        reddit_data=_fmt_compact(data, "reddit", BRIEFING_REDDIT_CHARS),
         papers_data=_fmt_compact(data, "papers", BRIEFING_PAPERS_CHARS),
-        github_data=_fmt_compact(data, "github", BRIEFING_GITHUB_CHARS),
         news_data=_fmt_compact(data, "news", BRIEFING_NEWS_CHARS),
     )
 
